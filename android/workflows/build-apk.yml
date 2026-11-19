@@ -1,0 +1,44 @@
+name: Build Bulung'ur MMTB Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'android/**'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Build Android APK
+        working-directory: android
+        run: gradle assembleDebug --no-daemon
+
+      - name: Copy APK with clean name
+        run: |
+          mkdir -p apk-output
+          cp android/app/build/outputs/apk/debug/app-debug.apk apk-output/Bulungur-MMTB-Widget.apk
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bulungur-MMTB-Widget-APK
+          path: apk-output/Bulungur-MMTB-Widget.apk
+          retention-days: 90

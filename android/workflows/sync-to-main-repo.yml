@@ -1,0 +1,68 @@
+name: Auto-Sync to Bulungur-tumani-logistika
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  sync:
+    # Never run inside the target repository itself (prevents infinite loops)
+    if: github.repository != 'Abdulaziz0109/Bulungur-tumani-logistika'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout AI Studio repository
+        uses: actions/checkout@v4
+        with:
+          path: source
+
+      - name: Sync files to Abdulaziz0109/Bulungur-tumani-logistika
+        env:
+          TARGET_REPO_TOKEN: ${{ secrets.TARGET_REPO_TOKEN }}
+          TARGET_REPO: Abdulaziz0109/Bulungur-tumani-logistika
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -e
+
+          if [ -z "$TARGET_REPO_TOKEN" ]; then
+            echo "================================================================="
+            echo "TARGET_REPO_TOKEN secret hali kiritilmagan!"
+            echo "GitHub -> Settings -> Secrets and variables -> Actions bo'limiga"
+            echo "TARGET_REPO_TOKEN nomli Personal Access Token qo'shing."
+            echo "================================================================="
+            exit 0
+          fi
+
+          git clone "https://x-access-token:${TARGET_REPO_TOKEN}@github.com/${TARGET_REPO}.git" target
+          cd target
+
+          git config user.name "AI Studio Auto-Sync"
+          git config user.email "actions@github.com"
+
+          rsync -av --delete \
+            --exclude='.git' \
+            --exclude='.github' \
+            ../source/ ./
+
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "O'zgarish topilmadi — ${TARGET_REPO} allaqachon eng yangi holatda."
+            exit 0
+          fi
+
+          git add -A
+          git commit -m "Auto-sync from AI Studio (${SOURCE_SHA:0:7})"
+
+          if git push origin HEAD; then
+            echo "Muvaffaqiyatli sinxronlandi: ${TARGET_REPO}"
+          else
+            echo "Workflow faylini yuklashga ruxsat yo'q — faqat asosiy kodlar sinxronlanmoqda..."
+            git reset --soft HEAD~1
+            git checkout HEAD -- .github/workflows 2>/dev/null || rm -rf .github/workflows
+            git add -A
+            if [ -n "$(git status --porcelain)" ]; then
+              git commit -m "Auto-sync from AI Studio (${SOURCE_SHA:0:7})"
+              git push origin HEAD
+              echo "Asosiy kodlar sinxronlandi! APK workflow ham o'tishi uchun tokenga 'Workflows: Read and write' ruxsatini bering."
+            fi
+          fi

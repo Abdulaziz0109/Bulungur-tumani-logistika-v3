@@ -1,0 +1,107 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    // Global helper functions
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Blueprint validations
+    function isValidLocation(data) {
+      return data.keys().hasAll(['name', 'type', 'lat', 'lng']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.type is string && data.type.size() > 0 && data.type.size() <= 50 &&
+             data.lat is number &&
+             data.lng is number;
+    }
+    function isValidRequest(data) {
+       return data.keys().hasAll(['actionType', 'data', 'status', 'createdBy', 'createdAt']) &&
+              data.actionType is string && data.actionType.size() <= 10 &&
+              data.status is string && data.status.size() <= 20 &&
+              data.createdBy is string && data.createdBy.size() <= 128 &&
+              data.createdAt is string && data.createdAt.size() <= 50;
+    }
+    function isValidRoute(data) {
+       return data.keys().hasAll(['name', 'locations', 'createdBy', 'createdAt']) &&
+              data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+              data.locations is list && data.locations.size() > 0 && data.locations.size() <= 100 &&
+              data.createdBy is string && data.createdBy.size() <= 128 &&
+              data.createdAt is string && data.createdAt.size() <= 50;
+    }
+    function isValidRouteCache(data) {
+      return data.keys().hasAll(['ids', 'totalDist', 'totalDuration', 'segments']) &&
+             data.ids is list && data.ids.size() >= 2 &&
+             data.totalDist is number &&
+             data.totalDuration is number &&
+             data.segments is list;
+    }
+    function isValidReport(data) {
+      return data.keys().hasAll(['userId', 'userFullname', 'photoFileId', 'createdAt']) &&
+             data.userId is number &&
+             data.userFullname is string && data.userFullname.size() > 0 && data.userFullname.size() <= 200 &&
+             data.photoFileId is string && data.photoFileId.size() > 0 && data.photoFileId.size() <= 200 &&
+             data.createdAt is string && data.createdAt.size() <= 50;
+    }
+
+    match /locations/{locationId} {
+      allow read: if isValidId(locationId);
+      allow list: if true;
+      allow create: if isAdmin() && isValidLocation(incoming());
+      allow update: if (isAdmin() && isValidId(locationId) && isValidLocation(incoming())) ||
+                     (isValidId(locationId) &&
+                      incoming().diff(existing()).affectedKeys().hasOnly(['landmark']) &&
+                      (incoming().landmark == "" || (incoming().landmark is string && incoming().landmark.size() <= 300)));
+      allow delete: if isAdmin() && isValidId(locationId);
+    }
+
+    match /requests/{requestId} {
+      allow read: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(requestId) && isValidRequest(incoming()) && incoming().createdBy == request.auth.uid && incoming().status == 'pending';
+      allow update: if isAdmin() && isValidId(requestId) && incoming().diff(existing()).affectedKeys().hasOnly(['status']);
+      allow delete: if isAdmin();
+    }
+    
+    match /routes/{routeId} {
+      allow read, delete: if isValidId(routeId) && (isAdmin() || (isSignedIn() && existing().createdBy == request.auth.uid) || existing().createdBy == 'guest');
+      allow list: if (request.auth != null && resource.data.createdBy == request.auth.uid) || (request.auth == null && resource.data.createdBy == 'guest');
+      allow create: if isValidId(routeId) && isValidRoute(incoming()) && (
+        (isSignedIn() && incoming().createdBy == request.auth.uid) ||
+        (incoming().createdBy == 'guest')
+      );
+      allow update: if isValidId(routeId) && isValidRoute(incoming()) && (
+        isAdmin() || (isSignedIn() && existing().createdBy == request.auth.uid) || existing().createdBy == 'guest'
+      );
+    }
+    
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      allow update, create: if isAdmin() && incoming().keys().hasAll(['role', 'email']);
+      allow delete: if isAdmin();
+    }
+
+    match /route_cache/{cacheId} {
+      allow read: if isValidId(cacheId);
+      allow create, update: if isValidId(cacheId) && isValidRouteCache(incoming());
+    }
+
+    match /reports/{reportId} {
+      allow read: if isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(reportId) && isValidReport(incoming());
+    }
+  }
+}

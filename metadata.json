@@ -1,0 +1,6 @@
+{
+  "name": "Bulung'ur MMTB Xarita",
+  "description": "Bulung'ur tumani maktab va bog'chalariga tezkor qidiruv va navigator yo'nalishlari.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

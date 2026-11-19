@@ -1,0 +1,101 @@
+{
+  "entities": {
+    "location": {
+      "title": "Location",
+      "description": "Represents a location marker on the map",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "mahalla": { "type": "string" },
+        "capacity": { "type": "number" },
+        "area": { "type": "number" },
+        "landmark": { "type": "string" },
+        "cadastre": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name", "type", "lat", "lng"]
+    },
+    "request": {
+      "title": "Location Request",
+      "description": "Moderation requests for adding or editing locations",
+      "type": "object",
+      "properties": {
+        "actionType": { "type": "string" },
+        "originalId": { "type": "string" },
+        "data": { "type": "object" },
+        "status": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["actionType", "data", "status", "createdBy", "createdAt"]
+    },
+    "route": {
+      "title": "Saved Route",
+      "description": "Represents a saved custom route on the map",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "locations": { "type": "array" },
+        "routeStats": { "type": "object" },
+        "isRoundtrip": { "type": "boolean" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["name", "locations", "createdBy", "createdAt"]
+    },
+    "route_cache": {
+      "title": "Route Cache",
+      "description": "Cache of driving distance and duration between locations",
+      "type": "object",
+      "properties": {
+        "ids": { "type": "array" },
+        "totalDist": { "type": "number" },
+        "totalDuration": { "type": "number" },
+        "segments": { "type": "array" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["ids", "totalDist", "totalDuration", "segments"]
+    },
+    "report": {
+      "title": "Photo Report",
+      "description": "User submitted photo reports via Telegram bot",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "number" },
+        "userFullname": { "type": "string" },
+        "username": { "type": "string" },
+        "photoFileId": { "type": "string" },
+        "photoWidth": { "type": "number" },
+        "photoHeight": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "caption": { "type": "string" }
+      },
+      "required": ["userId", "userFullname", "photoFileId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/locations/{locationId}": {
+      "schema": "location",
+      "description": "Collection of map locations"
+    },
+    "/requests/{requestId}": {
+      "schema": "request",
+      "description": "Collection of edit/add requests"
+    },
+    "/routes/{routeId}": {
+      "schema": "route",
+      "description": "Collection of saved custom routes"
+    },
+    "/route_cache/{cacheId}": {
+      "schema": "route_cache",
+      "description": "Cached route distances and durations between locations"
+    },
+    "/reports/{reportId}": {
+      "schema": "report",
+      "description": "Collection of user photo reports"
+    }
+  }
+}
