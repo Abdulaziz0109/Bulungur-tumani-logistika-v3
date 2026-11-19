@@ -1,0 +1,69 @@
+name: Sync & Build APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  sync-to-old-repo:
+    if: github.repository != 'Abdulaziz0109/Bulungur-tumani-logistika'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout AI Studio repository
+        uses: actions/checkout@v4
+        with:
+          path: source
+
+      - name: Sync to Bulungur-tumani-logistika
+        env:
+          TARGET_REPO_TOKEN: ${{ secrets.TARGET_REPO_TOKEN }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -e
+          git clone "https://x-access-token:${TARGET_REPO_TOKEN}@github.com/Abdulaziz0109/Bulungur-tumani-logistika.git" target
+          cd target
+          git config user.name "AI Studio Auto-Sync"
+          git config user.email "actions@github.com"
+          rsync -av --delete --exclude='.git' --exclude='.github' ../source/ ./
+          if [ -n "$(git status --porcelain)" ]; then
+            git add -A
+            git commit -m "Auto-sync from AI Studio (${SOURCE_SHA:0:7})"
+            git push origin HEAD
+            echo "Eski repo muvaffaqiyatli yangilandi!"
+          else
+            echo "O'zgarish yo'q."
+          fi
+
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Build Android APK
+        working-directory: android
+        run: gradle assembleDebug --no-daemon
+
+      - name: Prepare APK
+        run: |
+          mkdir -p apk-output
+          cp android/app/build/outputs/apk/debug/app-debug.apk apk-output/Bulungur-MMTB-Widget.apk
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bulungur-MMTB-Widget-APK
+          path: apk-output/Bulungur-MMTB-Widget.apk
+          retention-days: 90
