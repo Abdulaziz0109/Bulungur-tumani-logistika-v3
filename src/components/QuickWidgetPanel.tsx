@@ -17,7 +17,8 @@ import {
   Route,
   ExternalLink,
   Copy,
-  Smartphone
+  Smartphone,
+  RefreshCw
 } from 'lucide-react';
 import { Location } from '../types';
 import {
@@ -277,6 +278,20 @@ export const QuickWidgetPanel: React.FC<QuickWidgetPanelProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
+            {(window as unknown as { AndroidBridge?: { checkForUpdate?: () => void } }).AndroidBridge?.checkForUpdate && (
+              <button
+                type="button"
+                onClick={() => {
+                  (window as unknown as { AndroidBridge?: { checkForUpdate?: () => void } }).AndroidBridge?.checkForUpdate?.();
+                }}
+                aria-label="Ilova yangilanishini tekshirish"
+                className="min-h-[36px] px-2.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/35 text-emerald-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                title="Ilovaning yangi versiyasini tekshirish va o'rnatish"
+              >
+                <RefreshCw className="w-3.5 h-3.5 shrink-0" />
+                <span className="hidden sm:inline">Yangilash</span>
+              </button>
+            )}
             <Link
               to="/widget"
               onClick={onClose}

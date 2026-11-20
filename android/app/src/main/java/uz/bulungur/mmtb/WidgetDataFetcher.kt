@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.LocationManager
+import android.os.Build
 import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
@@ -62,26 +63,41 @@ object WidgetDataFetcher {
             .apply()
     }
 
+    /**
+     * Called by MainActivity's WebView JavaScript bridge whenever Firestore loads live locations.
+     * Ensures the home screen widget always matches the exact 109+ facilities inside the app.
+     */
+    fun saveExternalLocationsJson(context: Context, jsonText: String): Boolean {
+        val parsed = parseCachedJson(jsonText)
+        if (parsed.isEmpty()) return false
+        saveCache(context, parsed)
+        return true
+    }
+
     fun loadSnapshot(context: Context, forceNetwork: Boolean): WidgetSnapshot {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val lastFetch = prefs.getLong(KEY_CACHE_TIME, 0L)
         val cachedJson = prefs.getString(KEY_CACHE_JSON, null)
-        val isCacheFresh = cachedJson != null && (System.currentTimeMillis() - lastFetch) < 5 * 60 * 1000L
+        val cachedList = parseCachedJson(cachedJson)
+        val isCacheFresh = cachedList.size >= 10 &&
+            (System.currentTimeMillis() - lastFetch) < 5 * 60 * 1000L
 
         var rawList: List<MmtbLocation> = if (!forceNetwork && isCacheFresh) {
-            parseCachedJson(cachedJson)
+            cachedList
         } else {
             val fetched = fetchFromFirestore()
             if (fetched.isNotEmpty()) {
                 saveCache(context, fetched)
                 fetched
+            } else if (cachedList.isNotEmpty()) {
+                cachedList
             } else {
-                parseCachedJson(cachedJson)
+                loadBundledSeedLocations(context)
             }
         }
 
         if (rawList.isEmpty()) {
-            rawList = fallbackLocations()
+            rawList = loadBundledSeedLocations(context)
         }
 
         val (refLat, refLng, hasGps) = resolveBestLocation(context)
@@ -108,13 +124,15 @@ object WidgetDataFetcher {
             val url = URL(FIRESTORE_RUN_QUERY_URL)
             conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
-                connectTimeout = 7000
-                readTimeout = 8000
+                connectTimeout = 15000
+                readTimeout = 15000
+                doInput = true
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                setRequestProperty("Accept", "application/json")
             }
 
-            val body = """{"structuredQuery":{"from":[{"collectionId":"locations"}],"limit":250}}"""
+            val body = """{"structuredQuery":{"select":{"fields":[{"fieldPath":"name"},{"fieldPath":"type"},{"fieldPath":"lat"},{"fieldPath":"lng"},{"fieldPath":"mahalla"}]},"from":[{"collectionId":"locations"}],"limit":250}}"""
             OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { writer ->
                 writer.write(body)
                 writer.flush()
@@ -152,7 +170,16 @@ object WidgetDataFetcher {
             val lng = readDoubleField(fields, "lng")
 
             if (name.isNotBlank() && lat != null && lng != null) {
-                result.add(MmtbLocation(id = id, name = name, type = type, lat = lat, lng = lng, mahalla = mahalla))
+                result.add(
+                    MmtbLocation(
+                        id = id,
+                        name = name,
+                        type = type,
+                        lat = lat,
+                        lng = lng,
+                        mahalla = mahalla
+                    )
+                )
             }
         }
         return result
@@ -198,18 +225,34 @@ object WidgetDataFetcher {
             val list = mutableListOf<MmtbLocation>()
             for (i in 0 until arr.length()) {
                 val obj = arr.optJSONObject(i) ?: continue
-                list.add(
-                    MmtbLocation(
-                        id = obj.optString("id", "loc_$i"),
-                        name = obj.optString("name", ""),
-                        type = obj.optString("type", ""),
-                        lat = obj.optDouble("lat", BULUNGUR_LAT),
-                        lng = obj.optDouble("lng", BULUNGUR_LNG),
-                        mahalla = obj.optString("mahalla", "")
+                val name = obj.optString("name", "").trim()
+                val lat = obj.optDouble("lat", Double.NaN)
+                val lng = obj.optDouble("lng", Double.NaN)
+                if (name.isNotEmpty() && !lat.isNaN() && !lng.isNaN()) {
+                    list.add(
+                        MmtbLocation(
+                            id = obj.optString("id", "loc_$i"),
+                            name = name,
+                            type = obj.optString("type", "").lowercase(Locale.ROOT),
+                            lat = lat,
+                            lng = lng,
+                            mahalla = obj.optString("mahalla", "")
+                        )
                     )
-                )
+                }
             }
             list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun loadBundledSeedLocations(context: Context): List<MmtbLocation> {
+        return try {
+            val jsonText = context.assets.open("locations_seed.json").bufferedReader(Charsets.UTF_8).use {
+                it.readText()
+            }
+            parseCachedJson(jsonText)
         } catch (_: Exception) {
             emptyList()
         }
@@ -231,12 +274,20 @@ object WidgetDataFetcher {
 
         return try {
             val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-            val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            val providers = mutableListOf(
+                LocationManager.GPS_PROVIDER,
+                LocationManager.NETWORK_PROVIDER,
+                LocationManager.PASSIVE_PROVIDER
+            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                providers.add(0, LocationManager.FUSED_PROVIDER)
+            }
+
             var best: android.location.Location? = null
             for (provider in providers) {
                 val loc = try {
                     lm?.getLastKnownLocation(provider)
-                } catch (_: SecurityException) {
+                } catch (_: Exception) {
                     null
                 }
                 if (loc != null && (best == null || loc.time > best.time)) {
@@ -280,11 +331,4 @@ object WidgetDataFetcher {
             loc.lng
         )
     }
-
-    private fun fallbackLocations(): List<MmtbLocation> = listOf(
-        MmtbLocation("f1", "9-DMTT (Bog'cha)", "dmtt", 39.7652, 67.2725, "Mehrjon MFY"),
-        MmtbLocation("f2", "1-maktab", "maktab", 39.7634, 67.2770, "Bulung'ur markazi"),
-        MmtbLocation("f3", "10-bog'cha", "dmtt", 39.7660, 67.2690, "Bulung'ur markazi"),
-        MmtbLocation("f4", "4-maktab", "maktab", 39.7265, 67.3260, "Sho'ra")
-    )
 }

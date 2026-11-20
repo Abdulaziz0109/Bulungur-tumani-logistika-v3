@@ -1970,6 +1970,22 @@ export default function MapComponent() {
       } catch {
         // Ignore quota errors
       }
+      try {
+        const bridge = (window as unknown as { AndroidBridge?: { syncLocations?: (json: string) => void } }).AndroidBridge;
+        if (bridge?.syncLocations && locs.length > 0) {
+          const compact = locs.map(l => ({
+            id: l.id,
+            name: l.name,
+            type: l.type,
+            lat: l.lat,
+            lng: l.lng,
+            mahalla: l.mahalla || ''
+          }));
+          bridge.syncLocations(JSON.stringify(compact));
+        }
+      } catch {
+        // Ignore bridge errors outside Android APK
+      }
     } catch (error) {
       console.error('Error fetching locations:', error);
     } finally {

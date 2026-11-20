@@ -10,6 +10,7 @@ import {
   Mic,
   MicOff,
   Navigation,
+  RefreshCw,
   Search,
   Smartphone,
   X,
@@ -68,6 +69,25 @@ export default function WidgetPage() {
         });
         setLocations(list);
         setLoading(false);
+        try {
+          const bridge = (window as unknown as { AndroidBridge?: { syncLocations?: (json: string) => void } }).AndroidBridge;
+          if (bridge?.syncLocations && list.length > 0) {
+            bridge.syncLocations(
+              JSON.stringify(
+                list.map((l) => ({
+                  id: l.id,
+                  name: l.name,
+                  type: l.type,
+                  lat: l.lat,
+                  lng: l.lng,
+                  mahalla: l.mahalla || '',
+                }))
+              )
+            );
+          }
+        } catch {
+          // ignore outside Android WebView
+        }
       },
       () => {
         setLoading(false);
@@ -464,16 +484,32 @@ export default function WidgetPage() {
           )}
         </div>
 
-        {/* Footer Actions: Pin to Android Home Screen + Open Full Map */}
+        {/* Footer Actions: In-App APK Update (when in APK) or Pin Guide + Open Full Map */}
         <div className="px-4 py-3 bg-slate-950/35 border-t border-white/10 flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => setShowPinGuide((v) => !v)}
-            className="min-h-[36px] px-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-sky-200 text-[11px] font-bold flex items-center gap-1.5 cursor-pointer"
-          >
-            <Smartphone className="w-3.5 h-3.5 shrink-0" />
-            <span>Bosh ekranga vidjet qilib qo&apos;yish</span>
-          </button>
+          {(window as unknown as { AndroidBridge?: { checkForUpdate?: () => void; getAppVersion?: () => string } }).AndroidBridge?.checkForUpdate ? (
+            <button
+              type="button"
+              onClick={() => {
+                (window as unknown as { AndroidBridge?: { checkForUpdate?: () => void } }).AndroidBridge?.checkForUpdate?.();
+              }}
+              className="min-h-[36px] px-3 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/35 text-emerald-200 text-[11px] font-bold flex items-center gap-1.5 cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5 shrink-0" />
+              <span>
+                Yangilash (v
+                {(window as unknown as { AndroidBridge?: { getAppVersion?: () => string } }).AndroidBridge?.getAppVersion?.() || '1.0'})
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowPinGuide((v) => !v)}
+              className="min-h-[36px] px-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-sky-200 text-[11px] font-bold flex items-center gap-1.5 cursor-pointer"
+            >
+              <Smartphone className="w-3.5 h-3.5 shrink-0" />
+              <span>Bosh ekranga vidjet qilib qo&apos;yish</span>
+            </button>
+          )}
 
           <button
             type="button"

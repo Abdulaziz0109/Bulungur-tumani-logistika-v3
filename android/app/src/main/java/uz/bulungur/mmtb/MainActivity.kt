@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.webkit.CookieManager
 import android.webkit.GeolocationPermissions
+import android.webkit.JavascriptInterface
 import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -35,6 +36,32 @@ class MainActivity : AppCompatActivity() {
     private var pendingGeoOrigin: String? = null
     private var pendingGeoCallback: GeolocationPermissions.Callback? = null
 
+    inner class AndroidBridge {
+        @JavascriptInterface
+        fun syncLocations(json: String) {
+            if (WidgetDataFetcher.saveExternalLocationsJson(applicationContext, json)) {
+                val activeFilter = WidgetDataFetcher.getSavedFilter(applicationContext)
+                val refreshIntent = Intent(applicationContext, MmtbWidgetProvider::class.java).apply {
+                    action = MmtbWidgetProvider.ACTION_SET_FILTER
+                    putExtra(MmtbWidgetProvider.EXTRA_FILTER, activeFilter)
+                }
+                applicationContext.sendBroadcast(refreshIntent)
+            }
+        }
+
+        @JavascriptInterface
+        fun checkForUpdate() {
+            runOnUiThread {
+                AppUpdater.checkForUpdate(this@MainActivity, silentIfUpToDate = false)
+            }
+        }
+
+        @JavascriptInterface
+        fun getAppVersion(): String {
+            return BuildConfig.VERSION_NAME
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,6 +78,8 @@ class MainActivity : AppCompatActivity() {
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         settings.allowFileAccess = false
         settings.mediaPlaybackRequiresUserGesture = false
+
+        webView.addJavascriptInterface(AndroidBridge(), "AndroidBridge")
 
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
@@ -136,7 +165,15 @@ class MainActivity : AppCompatActivity() {
             requestLocationPermission()
         }
 
+        // Automatically check GitHub Releases for newer APK versions on launch
+        AppUpdater.checkForUpdate(this, silentIfUpToDate = true)
+
         loadStartUrl(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        AppUpdater.resumePendingInstallIfAny(this)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -185,7 +222,6 @@ class MainActivity : AppCompatActivity() {
             pendingGeoCallback = null
             pendingGeoOrigin = null
 
-            // Refresh home screen widgets now that GPS permission may have changed
             val refreshIntent = Intent(this, MmtbWidgetProvider::class.java).apply {
                 action = MmtbWidgetProvider.ACTION_REFRESH
             }
