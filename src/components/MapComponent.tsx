@@ -150,6 +150,12 @@ export default function MapComponent() {
   });
   const [routeGeometry, setRouteGeometry] = useState<[number, number][] | null>(() => {
     try {
+      const sel = localStorage.getItem('mmtb_last_selected_locations');
+      const parsedSel = sel ? JSON.parse(sel) : [];
+      if (!Array.isArray(parsedSel) || parsedSel.length < 2) {
+        localStorage.removeItem('mmtb_last_route_geometry');
+        return null;
+      }
       const cached = localStorage.getItem('mmtb_last_route_geometry');
       return cached ? JSON.parse(cached) : null;
     } catch {
@@ -158,6 +164,12 @@ export default function MapComponent() {
   });
   const [multiRouteGeometries, setMultiRouteGeometries] = useState<{coords: [number, number][], color: string}[] | null>(() => {
     try {
+      const sel = localStorage.getItem('mmtb_last_selected_locations');
+      const parsedSel = sel ? JSON.parse(sel) : [];
+      if (!Array.isArray(parsedSel) || parsedSel.length < 2) {
+        localStorage.removeItem('mmtb_last_multi_route_geometries');
+        return null;
+      }
       const cached = localStorage.getItem('mmtb_last_multi_route_geometries');
       return cached ? JSON.parse(cached) : null;
     } catch {
@@ -190,6 +202,12 @@ export default function MapComponent() {
   });
   const [routeStats, setRouteStats] = useState<any>(() => {
     try {
+      const sel = localStorage.getItem('mmtb_last_selected_locations');
+      const parsedSel = sel ? JSON.parse(sel) : [];
+      if (!Array.isArray(parsedSel) || parsedSel.length < 2) {
+        localStorage.removeItem('mmtb_last_route_stats');
+        return null;
+      }
       const cached = localStorage.getItem('mmtb_last_route_stats');
       return cached ? JSON.parse(cached) : null;
     } catch {
@@ -349,6 +367,12 @@ export default function MapComponent() {
       localStorage.setItem('mmtb_last_selected_locations', JSON.stringify(selectedLocations));
     } catch (e) {
       console.error("Local storage error:", e);
+    }
+    if (selectedLocations.length < 2) {
+      setRouteGeometry(null);
+      setMultiRouteGeometries(null);
+      setRouteStats(null);
+      setRouteSteps([]);
     }
   }, [selectedLocations]);
 
@@ -540,6 +564,7 @@ export default function MapComponent() {
     const ordered = sortLocationsNearestFirst(locsToSort, originLat, originLng);
     setSelectedLocations(ordered);
     setRouteGeometry(null);
+    setMultiRouteGeometries(null);
     setRouteStats(null);
     showToast("⚡ Manzillar eng yaqinidan tartiblandi!", "success");
 
@@ -610,6 +635,7 @@ export default function MapComponent() {
       return exists ? prev.filter((l) => l.id !== loc.id) : [...prev, loc];
     });
     setRouteGeometry(null);
+    setMultiRouteGeometries(null);
     setRouteStats(null);
   };
 
@@ -617,6 +643,7 @@ export default function MapComponent() {
     setSelectedLocations(locs.filter((l) => !l.id.startsWith('gps-')));
     setStartFromMyLocation(true);
     setRouteGeometry(null);
+    setMultiRouteGeometries(null);
     setRouteStats(null);
   };
 
@@ -1455,6 +1482,7 @@ export default function MapComponent() {
       }
     } else {
       setRouteGeometry(null);
+      setMultiRouteGeometries(null);
       setRouteStats(null);
       showToast(`"${route.name}" yuklandi!`, "success");
     }
@@ -1554,6 +1582,7 @@ export default function MapComponent() {
       }
     } else {
       setRouteGeometry(null);
+      setMultiRouteGeometries(null);
       setRouteStats(null);
       showToast(`Marshrut yuklandi!`, "success");
     }
@@ -2022,6 +2051,7 @@ export default function MapComponent() {
     if (!selectedLocations.find(l => l.id === loc.id)) {
       setSelectedLocations([...selectedLocations, loc]);
       setRouteGeometry(null);
+      setMultiRouteGeometries(null);
       setRouteStats(null);
     }
   };
@@ -2029,13 +2059,16 @@ export default function MapComponent() {
   const handleClearRoute = () => {
     setSelectedLocations([]);
     setRouteGeometry(null);
+    setMultiRouteGeometries(null);
     setRouteStats(null);
+    setRouteSteps([]);
   };
 
   const removeLocation = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     setSelectedLocations(selectedLocations.filter(l => l.id !== id));
     setRouteGeometry(null);
+    setMultiRouteGeometries(null);
     setRouteStats(null);
   };
 
@@ -4534,6 +4567,7 @@ export default function MapComponent() {
                             setSelectedLocations(newLocations);
                             showToast(`${loc.name} boshlang'ich nuqta etib belgilandi`, 'success');
                             setRouteGeometry(null);
+                            setMultiRouteGeometries(null);
                             setRouteStats(null);
                           }
                         }}>{getShortLabelString(loc.name)}</span>
@@ -4607,6 +4641,7 @@ export default function MapComponent() {
                         onChange={(e) => {
                           setIsRoundtrip(e.target.checked);
                           setRouteGeometry(null);
+                          setMultiRouteGeometries(null);
                           setRouteStats(null);
                         }} 
                         className="rounded border-slate-300 text-blue-600 w-3.5 h-3.5 cursor-pointer" 
