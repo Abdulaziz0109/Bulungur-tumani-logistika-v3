@@ -5,6 +5,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   sync-to-old-repo:
     if: github.repository != 'Abdulaziz0109/Bulungur-tumani-logistika'
@@ -52,14 +55,15 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      - name: Build Android APK
+      - name: Build signed Android APK
         working-directory: android
-        run: gradle assembleDebug --no-daemon
+        run: |
+          gradle assembleRelease -PversionCode=${{ github.run_number }} -PversionName=1.0.${{ github.run_number }} --no-daemon
 
       - name: Prepare APK
         run: |
           mkdir -p apk-output
-          cp android/app/build/outputs/apk/debug/app-debug.apk apk-output/Bulungur-MMTB-Widget.apk
+          cp android/app/build/outputs/apk/release/app-release.apk apk-output/Bulungur-MMTB-Widget.apk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
@@ -67,3 +71,11 @@ jobs:
           name: Bulungur-MMTB-Widget-APK
           path: apk-output/Bulungur-MMTB-Widget.apk
           retention-days: 90
+
+      - name: Publish GitHub Release for In-App Auto-Update
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: "Bulung'ur MMTB v1.0.${{ github.run_number }}"
+          body: "Yangi yangilanish (v1.0.${{ github.run_number }})."
+          files: apk-output/Bulungur-MMTB-Widget.apk
