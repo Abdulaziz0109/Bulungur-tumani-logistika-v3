@@ -1094,6 +1094,21 @@ export default function MapComponent() {
       return;
     }
     
+    if (isSubmitting) return;
+    const normalizedNewName = newLocName.trim().toLowerCase().replace(/[\s-]+/g, '');
+    const duplicateExisting = locations.find(
+      l =>
+        l.type === newLocType &&
+        l.name.trim().toLowerCase().replace(/[\s-]+/g, '') === normalizedNewName
+    );
+    if (duplicateExisting) {
+      showToast(
+        `"${duplicateExisting.name}" bazada allaqachon mavjud! Uni tahrirlash orqali o'zgartiring.`,
+        'error'
+      );
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const locationData: any = {

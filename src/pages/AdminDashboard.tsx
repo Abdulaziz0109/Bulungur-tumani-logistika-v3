@@ -21,11 +21,13 @@ import {
   Clock,
   FileSpreadsheet,
   Download,
+  MapPin,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { exportSchoolsAndKindergartensToExcel } from '../utils/excelExporter';
+import LocationAuditPanel from '../components/LocationAuditPanel';
 
-type AdminTab = 'users' | 'requests' | 'reports';
+type AdminTab = 'users' | 'requests' | 'reports' | 'audit';
 
 export default function AdminDashboard() {
   const [users, setUsers] = useState<any[]>([]);
@@ -46,6 +48,7 @@ export default function AdminDashboard() {
   // Inline confirmation state (avoids window.confirm inside iframes)
   const [confirmRejectId, setConfirmRejectId] = useState<string | null>(null);
   const [confirmDeleteUserId, setConfirmDeleteUserId] = useState<string | null>(null);
+  const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
   const [brokenReportImages, setBrokenReportImages] = useState<Record<string, boolean>>({});
 
   const navigate = useNavigate();
@@ -66,6 +69,16 @@ export default function AdminDashboard() {
       const snap = await getDocs(collection(db, 'locations'));
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setLocations(list);
+      const seen = new Set<string>();
+      const hasDup = list.some((item: any) => {
+        const key = `${item.type || ''}::${String(item.name || '').toLowerCase().replace(/[\s-]+/g, '')}`;
+        if (seen.has(key)) return true;
+        seen.add(key);
+        return false;
+      });
+      if (hasDup) {
+        setActiveTab(prev => (prev === 'users' ? 'audit' : prev));
+      }
     } catch (e) {
       console.error('Locations loading error:', e);
     }
@@ -118,6 +131,8 @@ export default function AdminDashboard() {
   };
 
   const handleApprove = async (req: any) => {
+    if (processingRequestId) return;
+    setProcessingRequestId(req.id);
     setError('');
     setSuccess('');
     try {
@@ -127,28 +142,35 @@ export default function AdminDashboard() {
         await updateDoc(doc(db, 'locations', req.originalId), req.data);
       }
       await updateDoc(doc(db, 'requests', req.id), { status: 'approved' });
+      setRequests(prev => prev.filter(r => r.id !== req.id));
       setSuccess("Taklif tasdiqlandi va xaritaga qo'shildi!");
-      fetchRequests();
-      fetchLocations();
+      await Promise.all([fetchRequests(), fetchLocations()]);
     } catch (err: any) {
       setError(err.message || 'Xatolik yuz berdi');
+    } finally {
+      setProcessingRequestId(null);
     }
   };
 
   const handleReject = async (reqId: string) => {
+    if (processingRequestId) return;
     if (confirmRejectId !== reqId) {
       setConfirmRejectId(reqId);
       return;
     }
+    setProcessingRequestId(reqId);
     setError('');
     setSuccess('');
     try {
       await updateDoc(doc(db, 'requests', reqId), { status: 'rejected' });
       setConfirmRejectId(null);
+      setRequests(prev => prev.filter(r => r.id !== reqId));
       setSuccess('Taklif rad etildi.');
-      fetchRequests();
+      await fetchRequests();
     } catch (err: any) {
       setError(err.message || 'Xatolik yuz berdi');
+    } finally {
+      setProcessingRequestId(null);
     }
   };
 
@@ -230,6 +252,8 @@ export default function AdminDashboard() {
       ? "Foydalanuvchilar ro'yxati"
       : activeTab === 'requests'
       ? "Xaritadagi o'zgarish takliflari"
+      : activeTab === 'audit'
+      ? 'Obyektlar va joylashuv auditi'
       : 'Telegram Foto-hisobotlar';
 
   const tabDescription =
@@ -237,6 +261,8 @@ export default function AdminDashboard() {
       ? 'Tizimga kirish huquqiga ega barcha xodimlar'
       : activeTab === 'requests'
       ? "Foydalanuvchilar tomondan yuborilgan yangi joylashuv yoki tahrirlashlar"
+      : activeTab === 'audit'
+      ? "Dublikatlarni tozalash, siljigan maktab koordinatalarini almashtirish va tahrirlash"
       : "Haydovchi va mas'ullar Telegram bot orqali yuborgan joyidagi foto-hisobotlar";
 
   return (
@@ -308,6 +334,25 @@ export default function AdminDashboard() {
                     {reports.length}
                   </span>
                 )}
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                onClick={() => setActiveTab('audit')}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm transition-colors cursor-pointer ${
+                  activeTab === 'audit'
+                    ? 'bg-indigo-50 text-indigo-700'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <MapPin className="w-5 h-5" />
+                  <span>Obyektlar / Audit</span>
+                </div>
+                <span className="bg-amber-100 text-amber-700 min-w-[20px] h-[20px] flex items-center justify-center rounded-full text-[10px] px-1.5 font-extrabold">
+                  {locations.length}
+                </span>
               </button>
             </li>
             <li>
@@ -402,6 +447,15 @@ export default function AdminDashboard() {
             }`}
           >
             Foto ({reports.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('audit')}
+            className={`flex-1 text-center py-2 rounded-lg font-bold text-xs transition-all ${
+              activeTab === 'audit' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600'
+            }`}
+          >
+            Audit
           </button>
         </div>
 
@@ -557,10 +611,12 @@ export default function AdminDashboard() {
                 <div className="flex space-x-3">
                   <button
                     type="button"
+                    disabled={processingRequestId === req.id}
                     onClick={() => handleApprove(req)}
-                    className="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-100 font-bold py-2.5 rounded-xl text-xs transition-colors flex justify-center items-center space-x-1.5 cursor-pointer"
+                    className="flex-1 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 text-emerald-600 border border-emerald-100 font-bold py-2.5 rounded-xl text-xs transition-colors flex justify-center items-center space-x-1.5 cursor-pointer"
                   >
-                    <Check className="w-4 h-4" /> <span>Tasdiqlash</span>
+                    <Check className="w-4 h-4" />{' '}
+                    <span>{processingRequestId === req.id ? 'Saqlanmoqda...' : 'Tasdiqlash'}</span>
                   </button>
                   {confirmRejectId === req.id ? (
                     <div className="flex-1 flex gap-1">
@@ -597,6 +653,19 @@ export default function AdminDashboard() {
               </div>
             )}
           </div>
+        ) : activeTab === 'audit' ? (
+          <LocationAuditPanel
+            locations={locations}
+            onRefresh={fetchLocations}
+            onSuccess={msg => {
+              setError('');
+              setSuccess(msg);
+            }}
+            onError={msg => {
+              setSuccess('');
+              setError(msg);
+            }}
+          />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {reports.map(report => {

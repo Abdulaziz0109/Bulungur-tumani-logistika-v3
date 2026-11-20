@@ -1,1 +1,882 @@
-[{"id": "jKPK2rHBRAxC3nu867hQ", "name": "27-maktab", "type": "maktab", "lat": 39.825762, "lng": 67.424416, "mahalla": "G'o'bdin MFY"}, {"id": "GzVs4bPyNER6u1R3zQM9", "name": "Bulung'ur tumani MMTB", "type": "tashkilot", "lat": 39.750724447322, "lng": 67.27628983078596, "mahalla": ""}, {"id": "2NcypewLUFNjvDvupBbd", "name": "17-maktab", "type": "maktab", "lat": 39.793246, "lng": 67.367757, "mahalla": "Olmazor MFY"}, {"id": "ljwVmk7wZIFQYVNCBZvI", "name": "35-maktab", "type": "maktab", "lat": 39.740901, "lng": 67.370547, "mahalla": "Erganakli MFY"}, {"id": "13jJQoRq9kPtAHDE9EFL", "name": "38-maktab", "type": "maktab", "lat": 39.615318, "lng": 67.257657, "mahalla": "Elobod MFY"}, {"id": "CzirUbtq2V8g199fJxpa", "name": "8-bog'cha", "type": "dmtt", "lat": 39.75572968, "lng": 67.28311157, "mahalla": ""}, {"id": "4Kgy2SLfDrOsYIZv0xHz", "name": "10-bog'cha", "type": "dmtt", "lat": 39.76276016, "lng": 67.26819611, "mahalla": ""}, {"id": "lldjtfejnduuXWc9ftkb", "name": "6-bog'cha", "type": "dmtt", "lat": 39.75558472, "lng": 67.26769257, "mahalla": ""}, {"id": "zp9tPhVJMc4G2mA2dfpY", "name": "65-maktab", "type": "maktab", "lat": 39.591267, "lng": 67.375509, "mahalla": "Sariqipchoq MFY"}, {"id": "YzE43DGCRB2gusIcZAOw", "name": "33-maktab", "type": "maktab", "lat": 39.773815, "lng": 67.344636, "mahalla": "Olmazor MFY"}, {"id": "bdKDIecrngDUekwuv91E", "name": "66-maktab", "type": "maktab", "lat": 39.632537, "lng": 67.371427, "mahalla": "Yangiariq MFY"}, {"id": "gLurqIkbRSZKkU0Ito9H", "name": "23-bog'cha", "type": "dmtt", "lat": 39.72235107, "lng": 67.29816437, "mahalla": ""}, {"id": "AqH5AgJ9yf6gGRLKuJnj", "name": "15-maktab", "type": "maktab", "lat": 39.704798, "lng": 67.283941, "mahalla": "Oqtepa MFY"}, {"id": "ysiHXEk5ZDR9CwTdlKnG", "name": "67-maktab", "type": "maktab", "lat": 39.588644, "lng": 67.340018, "mahalla": "Avliyoparpi MFY"}, {"id": "iqo30l5LAdbjXP0dlznV", "name": "Bulungʻur tumani Kadastr palatasi", "type": "tashkilot", "lat": 39.75195366807725, "lng": 67.27140267344, "mahalla": ""}, {"id": "Zcufh4CVPABTn5eR0Qse", "name": "11-bog'cha", "type": "dmtt", "lat": 39.75760269, "lng": 67.38375092, "mahalla": ""}, {"id": "qZIkPdZPPNExRHGchjCR", "name": "48-maktab", "type": "maktab", "lat": 39.64, "lng": 67.252035, "mahalla": "Qirqshodi MFY"}, {"id": "VvYl2yV5TPYBtr0mzrPK", "name": "35-bog'cha", "type": "dmtt", "lat": 39.60361181353493, "lng": 67.37280496272602, "mahalla": ""}, {"id": "sNItPtWN1Gj0RlcBCeYx", "name": "Bulung'ur IIB", "type": "tashkilot", "lat": 39.75920103327994, "lng": 67.2747527910501, "mahalla": ""}, {"id": "ylVUPCwZVg33Ocu5YA2P", "name": "19-maktab", "type": "maktab", "lat": 39.810552, "lng": 67.209203, "mahalla": "Bog'bon MFY"}, {"id": "zpknrQuTLC7lhO9BKnAp", "name": "7-maktab", "type": "maktab", "lat": 39.658019, "lng": 67.391955, "mahalla": "Nebo'sa MFY"}, {"id": "LCrVMEDf023vBQ19WDAT", "name": "46-maktab", "type": "maktab", "lat": 39.762815, "lng": 67.257995, "mahalla": "Samaqand MFY"}, {"id": "kFolBcW4FkzYcENkCnav", "name": "70-maktab", "type": "maktab", "lat": 39.603177, "lng": 67.372232, "mahalla": "Changal MFY"}, {"id": "NOYqo9iSYZspMYRzf9mv", "name": "12-bog'cha", "type": "dmtt", "lat": 39.76451111, "lng": 67.38282776, "mahalla": ""}, {"id": "ExqHgx6BSUpKZV7OHRN2", "name": "50-maktab", "type": "maktab", "lat": 39.713789, "lng": 67.387784, "mahalla": "Nebo'sa MFY"}, {"id": "yPAFIBqwqE261MK1FjrW", "name": "55-maktab", "type": "maktab", "lat": 39.636811, "lng": 67.233552, "mahalla": "Navbahor MFY"}, {"id": "ioMA5Tqj9mpsQ0jQ3ARh", "name": "1-IDUM", "type": "maktab", "lat": 39.763053, "lng": 67.289976, "mahalla": "Navbahor MFY"}, {"id": "09FqNJ3w8HILOXnZQSxs", "name": "4-maktab", "type": "maktab", "lat": 39.733873, "lng": 67.333104, "mahalla": "Nurli yo'l MFY"}, {"id": "6rAZqJgBPa4dtq5XUHcs", "name": "41-maktab", "type": "maktab", "lat": 39.54285, "lng": 67.438703, "mahalla": "Xo'jamazgil MFY"}, {"id": "gcM66LRFfLXDVtL1jgRn", "name": "5-bog'cha", "type": "dmtt", "lat": 39.75106812, "lng": 67.27368164, "mahalla": ""}, {"id": "QMZb3ZvpZ3BKmeMORDQo", "name": "24-maktab", "type": "maktab", "lat": 39.852006, "lng": 67.350459, "mahalla": "Kattaqishloq hududi"}, {"id": "nHSj3rvabbBaP6MPzJs6", "name": "14-bog'cha", "type": "dmtt", "lat": 39.60176468, "lng": 67.36036682, "mahalla": ""}, {"id": "fxwafqnquuRPIAwgz15a", "name": "26-bog'cha", "type": "dmtt", "lat": 39.6761322, "lng": 67.26257324, "mahalla": ""}, {"id": "1rJTffKWjWbPcqP8F97J", "name": "36-maktab", "type": "maktab", "lat": 39.725364, "lng": 67.300787, "mahalla": "Mingchinor MFY"}, {"id": "Sf8dBm1Zp4RwOWy063TV", "name": "2-bog'cha", "type": "dmtt", "lat": 39.76038361, "lng": 67.26345062, "mahalla": ""}, {"id": "PVAdUvkXd14PHRBzlcMI", "name": "Bulung'ur Moliya Bo'limi", "type": "tashkilot", "lat": 39.7501925814147, "lng": 67.27589706406806, "mahalla": ""}, {"id": "ZiMlCmMg0qIeETAs0ZYF", "name": "45-maktab", "type": "maktab", "lat": 39.61209, "lng": 67.28261, "mahalla": "Dehqonobod MFY"}, {"id": "l4kNMtHlpT05f0wJSFFP", "name": "18-bog'cha", "type": "dmtt", "lat": 39.67995453, "lng": 67.34668732, "mahalla": ""}, {"id": "B1zf4JKl3HNDgQrSuZjB", "name": "25-bog'cha", "type": "dmtt", "lat": 39.7057724, "lng": 67.21875763, "mahalla": ""}, {"id": "p9WLJGuNaRR6Iql9cAvJ", "name": "39-maktab", "type": "maktab", "lat": 39.606999, "lng": 67.445464, "mahalla": "Xo'jamazgil MFY"}, {"id": "qQALiy29pnoKkgi8Dk8C", "name": "4-bog'cha", "type": "dmtt", "lat": 39.7703, "lng": 67.276368, "mahalla": ""}, {"id": "wz7ISJ0FsVNtKl7INdX6", "name": "22-maktab", "type": "maktab", "lat": 39.751044, "lng": 67.27227, "mahalla": "Bulung'ur MFY"}, {"id": "pPSUlCfO1PBRdadtQvGk", "name": "54-maktab", "type": "maktab", "lat": 39.766777, "lng": 67.292149, "mahalla": "Zarafshon MFY"}, {"id": "aoh18dhMVdFbxD2GhH1z", "name": "1-bog'cha", "type": "dmtt", "lat": 39.7620873217514, "lng": 67.27672517138619, "mahalla": ""}, {"id": "FkeMGEl2iuD1UTvSEkZG", "name": "16-bog'cha", "type": "dmtt", "lat": 39.73789215, "lng": 67.33200073, "mahalla": ""}, {"id": "QfPZZ1g2dAq0KkA6DETn", "name": "20-maktab", "type": "maktab", "lat": 39.785259, "lng": 67.298407, "mahalla": "Yangi ariq MFY"}, {"id": "rd4UaIkofflKM3NfCO7X", "name": "16-maktab", "type": "maktab", "lat": 39.716259, "lng": 67.231218, "mahalla": "Gulobod MFY"}, {"id": "NFL4Q5fhItJWaQpQ5vEe", "name": "24-bog'cha", "type": "dmtt", "lat": 39.7830658, "lng": 67.30770111, "mahalla": ""}, {"id": "V6PLgAnVeinlCackyJP5", "name": "32-maktab", "type": "maktab", "lat": 39.790927, "lng": 67.219259, "mahalla": "Mingtepa MFY"}, {"id": "1oXel10Rt76oQXFtFbmx", "name": "9-bog'cha", "type": "dmtt", "lat": 39.76014328, "lng": 67.27340698, "mahalla": ""}, {"id": "8LtyChYaxnhRftd8YOwv", "name": "59-maktab", "type": "maktab", "lat": 39.624176, "lng": 67.292457, "mahalla": "Saxovat MFY"}, {"id": "XzbaLg1ZYZUHqbEpetil", "name": "6-maktab", "type": "maktab", "lat": 39.696866, "lng": 67.388308, "mahalla": "Changal MFY"}, {"id": "6cKQMB1xyoyz9tNwbS1E", "name": "37-maktab", "type": "maktab", "lat": 39.669654, "lng": 67.311815, "mahalla": "Beshkubi MFY"}, {"id": "aEaP4xMmz6vmo3snjLkJ", "name": "33-bog'cha", "type": "dmtt", "lat": 39.74041748, "lng": 67.37062836, "mahalla": ""}, {"id": "EhdUiMlGLk7v2YTJTZWV", "name": "57-maktab", "type": "maktab", "lat": 39.576705, "lng": 67.333045, "mahalla": "Isori O'roqli MFY"}, {"id": "8j4jz0JTzxXmNsKTaGWr", "name": "43-maktab", "type": "maktab", "lat": 39.627196, "lng": 67.32373, "mahalla": "Xo'jabachcha MFY"}, {"id": "ZUEGQROjXnAiWdRPeGZS", "name": "17-bog'cha", "type": "dmtt", "lat": 39.777668, "lng": 67.22707367, "mahalla": ""}, {"id": "PsDaTiR9bw3JDNxjbbCW", "name": "29-maktab", "type": "maktab", "lat": 39.658802, "lng": 67.236421, "mahalla": "Qo'ng'irot MFY"}, {"id": "6orkXcYDAIKqvfOOmQSg", "name": "40-maktab", "type": "maktab", "lat": 39.584791, "lng": 67.351763, "mahalla": "Esonturdi MFY"}, {"id": "ogUOaPCDMQZmT7aJDhua", "name": "26-maktab", "type": "maktab", "lat": 39.773378, "lng": 67.415331, "mahalla": "Oqtosh MFY"}, {"id": "n7VYp8kzFSGRkD3XppOE", "name": "Toza hudud DUK", "type": "tashkilot", "lat": 39.7411134224802, "lng": 67.27751776616573, "mahalla": ""}, {"id": "Xmzm9YYHVkFy71xjGZJe", "name": "18-maktab", "type": "maktab", "lat": 39.78795, "lng": 67.250063, "mahalla": "Yangiobod MFY"}, {"id": "lQltchJktFJoCIiITYpS", "name": "58-maktab", "type": "maktab", "lat": 39.588229, "lng": 67.309715, "mahalla": "Esonturdi MFY"}, {"id": "ktEqpQFrRcthvxAGqe1K", "name": "69-maktab", "type": "maktab", "lat": 39.758698, "lng": 67.386209, "mahalla": "Alisher Navoiy MFY"}, {"id": "BwJPG1PBm8xko4WpFs3t", "name": "34-maktab", "type": "maktab", "lat": 39.768763, "lng": 67.274965, "mahalla": "Ulug'bek MFY"}, {"id": "EFuw7qt5oqBYFN0b8yqi", "name": "13-bog'cha", "type": "dmtt", "lat": 39.78581238, "lng": 67.24762726, "mahalla": ""}, {"id": "hwZYsgDYBKF4WCu8xqpR", "name": "15-bog'cha", "type": "dmtt", "lat": 39.6995697, "lng": 67.38434601, "mahalla": ""}, {"id": "t77oYdy24sigqfdzSq24", "name": "22-bog'cha", "type": "dmtt", "lat": 39.63895798, "lng": 67.25875854, "mahalla": ""}, {"id": "ZBllU6luQ6DbDqK7VPo4", "name": "30-maktab", "type": "maktab", "lat": 39.781143, "lng": 67.456265, "mahalla": "Oqtosh MFY"}, {"id": "uaai0Hc7rTtfL4CSss3d", "name": "21-maktab", "type": "maktab", "lat": 39.768612, "lng": 67.227248, "mahalla": "Mingtepa MFY"}, {"id": "gXKL2FvVNn88KVqZ9cBu", "name": "27-bog'cha", "type": "dmtt", "lat": 39.77771378, "lng": 67.3099823, "mahalla": ""}, {"id": "1BYZk7eV7y8DloNRF7pb", "name": "8-maktab", "type": "maktab", "lat": 39.687509, "lng": 67.339407, "mahalla": "O'roqli MFY"}, {"id": "T8bguGV2xvuEaf6v3YGq", "name": "63-maktab", "type": "maktab", "lat": 39.626708, "lng": 67.352043, "mahalla": "Bulungur ariq MFY"}, {"id": "Qu1rhrXkV6NePwoFinIN", "name": "28-maktab", "type": "maktab", "lat": 39.587796, "lng": 67.29154, "mahalla": "Mirza Ariq MFY"}, {"id": "aRlkwxNJfSMe4psaU7vu", "name": "29-bog'cha", "type": "dmtt", "lat": 39.61381149, "lng": 67.28142548, "mahalla": ""}, {"id": "yB5mAm5zG3ITDfaF5EF8", "name": "42-maktab", "type": "maktab", "lat": 39.6557, "lng": 67.341639, "mahalla": "Kichik kildon MFY"}, {"id": "uxEea5vmx2KvgT1P7noh", "name": "12-maktab", "type": "maktab", "lat": 39.636242, "lng": 67.317443, "mahalla": "Suluvqo'rg'on MFY"}, {"id": "iLw2ChOO7ahMLvr3LIET", "name": "21-bog'cha", "type": "dmtt", "lat": 39.59784317, "lng": 67.32663727, "mahalla": ""}, {"id": "bDH1X481qIoaChTS6L9H", "name": "60-maktab", "type": "maktab", "lat": 39.75636, "lng": 67.401002, "mahalla": "Saxovat MFY"}, {"id": "dQlaV500AmavL4HH2k7e", "name": "3-bog'cha", "type": "dmtt", "lat": 39.76484299, "lng": 67.26593018, "mahalla": ""}, {"id": "jSBFovhFpBTZcCEjpZ4c", "name": "11-maktab", "type": "maktab", "lat": 39.634537, "lng": 67.408369, "mahalla": "Niyozmat MFY"}, {"id": "ZQrYjtTCVKE00RlmuUBW", "name": "Bulung'ur Markaziy Shifoxonasi", "type": "tashkilot", "lat": 39.76038121441895, "lng": 67.27112413235098, "mahalla": ""}, {"id": "mjqF2KMYHeMVixqws3IQ", "name": "25-maktab", "type": "maktab", "lat": 39.855002, "lng": 67.430043, "mahalla": "Lalmikor MFY"}, {"id": "1DEA3MTlArZfZxaxaCJp", "name": "56-maktab", "type": "maktab", "lat": 39.696772, "lng": 67.329097, "mahalla": "Qirqshodi MFY"}, {"id": "usHrGJ7xTSqYVp0syHnW", "name": "23-maktab", "type": "maktab", "lat": 39.759023, "lng": 67.267052, "mahalla": "Bulung'ur MFY"}, {"id": "kixYUatEosk78eiPPaGH", "name": "9-maktab", "type": "maktab", "lat": 39.598829, "lng": 67.330429, "mahalla": "Alisher Navoiy MFY"}, {"id": "Kj5NlqvYmvnfKOHxfJYh", "name": "44-maktab", "type": "maktab", "lat": 39.603235, "lng": 67.30779, "mahalla": "Saxovat MFY"}, {"id": "1vqTYLxfhcYFeYbFuBo8", "name": "34-bog'cha", "type": "dmtt", "lat": 39.75118637, "lng": 67.27560425, "mahalla": ""}, {"id": "WwB50mKNSMPJpRRxZObY", "name": "53-maktab", "type": "maktab", "lat": 39.692397, "lng": 67.240538, "mahalla": "Qo'ng'irot MFY"}, {"id": "n600PQaqD1Vvfubm7jss", "name": "13-maktab", "type": "maktab", "lat": 39.607761, "lng": 67.358619, "mahalla": "Cho'yantepa MFY"}, {"id": "Xv8TFljcIQAobuFYV0el", "name": "52-maktab", "type": "maktab", "lat": 39.67277, "lng": 67.264766, "mahalla": "Gulzor MFY"}, {"id": "dxpVLseBWMvWNOKmupOK", "name": "30-bog'cha", "type": "dmtt", "lat": 39.77898026, "lng": 67.42514038, "mahalla": ""}, {"id": "msjJEF235Aln1n37zLST", "name": "68-maktab", "type": "maktab", "lat": 39.696985, "lng": 67.376608, "mahalla": "Sariqipchoq MFY"}, {"id": "Pi2VfTFoXWwpGb8f5ERF", "name": "61-maktab", "type": "maktab", "lat": 39.756362, "lng": 67.400919, "mahalla": "Fozil Yo'ldosh MFY"}, {"id": "sdYsQkmaUvPHQdLtRCgV", "name": "62-maktab", "type": "maktab", "lat": 39.640075, "lng": 67.275445, "mahalla": "Kaftarxona MFY"}, {"id": "RMdIZhyXM8eV2G9bRSwU", "name": "Prokuratura", "type": "tashkilot", "lat": 39.74999048664861, "lng": 67.27150996179576, "mahalla": ""}, {"id": "ZHLryHfLu3NeHYVhcJsB", "name": "2-maktab", "type": "maktab", "lat": 39.643976, "lng": 67.355608, "mahalla": "Kildon MFY"}, {"id": "f1WKhFfhLTXMwItwA7Po", "name": "51-maktab", "type": "maktab", "lat": 39.694999, "lng": 67.315246, "mahalla": "Bulung'urariq MFY"}, {"id": "gjap6nu1lAMGNRlYnjRc", "name": "49-maktab", "type": "maktab", "lat": 39.621929, "lng": 67.243999, "mahalla": "Elobod MFY"}, {"id": "S2Yx29V6ZOWCY9GaNy9h", "name": "72-maktab", "type": "maktab", "lat": 39.75861497989896, "lng": 67.38690158380795, "mahalla": "Chorbog' MFY"}, {"id": "yjVfAWzf6aU5g1J27WB7", "name": "5-maktab", "type": "maktab", "lat": 39.760191, "lng": 67.383398, "mahalla": "Fozil Yo'ldosh MFY"}, {"id": "BIT9XDtxOS9a5XHQNGwZ", "name": "7-bog'cha", "type": "dmtt", "lat": 39.76442719, "lng": 67.28821564, "mahalla": ""}, {"id": "l5CdZQJehD7wwgvA9cuh", "name": "14-maktab", "type": "maktab", "lat": 39.642346, "lng": 67.268544, "mahalla": "Kaptarxona MFY"}, {"id": "ryxcc5ztPZri5e4KiaP3", "name": "31-maktab", "type": "maktab", "lat": 39.819431, "lng": 67.518886, "mahalla": "G'o'bdin MFY"}, {"id": "mqxjJBxjQ5UM69919Vww", "name": "73-maktab", "type": "maktab", "lat": 39.810143, "lng": 67.371458, "mahalla": "Olmazor MFY"}, {"id": "0zLjPrlwtbvNvkn3DJnZ", "name": "28-bog'cha", "type": "dmtt", "lat": 39.8255043, "lng": 67.42173004, "mahalla": ""}, {"id": "wA2uBBQxJeghG1XKYMpQ", "name": "20-bog'cha", "type": "dmtt", "lat": 39.69245148, "lng": 67.24021149, "mahalla": ""}, {"id": "ho0NcLK2tojDT31ZIaBs", "name": "10-maktab", "type": "maktab", "lat": 39.564282, "lng": 67.388776, "mahalla": "Xo'jamazgil MFY"}, {"id": "tpMgmlNBwB2fWSW2fce0", "name": "3-maktab", "type": "maktab", "lat": 39.783138, "lng": 67.312814, "mahalla": "Yangiariq MFY"}]
+[
+  {
+    "id": "jKPK2rHBRAxC3nu867hQ",
+    "name": "27-maktab",
+    "type": "maktab",
+    "lat": 39.825762,
+    "lng": 67.424416,
+    "mahalla": "G'o'bdin MFY"
+  },
+  {
+    "id": "GzVs4bPyNER6u1R3zQM9",
+    "name": "Bulung'ur tumani MMTB",
+    "type": "tashkilot",
+    "lat": 39.750724447322,
+    "lng": 67.27628983078596,
+    "mahalla": ""
+  },
+  {
+    "id": "2NcypewLUFNjvDvupBbd",
+    "name": "17-maktab",
+    "type": "maktab",
+    "lat": 39.793246,
+    "lng": 67.367757,
+    "mahalla": "Olmazor MFY"
+  },
+  {
+    "id": "ljwVmk7wZIFQYVNCBZvI",
+    "name": "35-maktab",
+    "type": "maktab",
+    "lat": 39.740901,
+    "lng": 67.370547,
+    "mahalla": "Erganakli MFY"
+  },
+  {
+    "id": "13jJQoRq9kPtAHDE9EFL",
+    "name": "38-maktab",
+    "type": "maktab",
+    "lat": 39.615318,
+    "lng": 67.257657,
+    "mahalla": "Elobod MFY"
+  },
+  {
+    "id": "CzirUbtq2V8g199fJxpa",
+    "name": "8-bog'cha",
+    "type": "dmtt",
+    "lat": 39.75572968,
+    "lng": 67.28311157,
+    "mahalla": ""
+  },
+  {
+    "id": "4Kgy2SLfDrOsYIZv0xHz",
+    "name": "10-bog'cha",
+    "type": "dmtt",
+    "lat": 39.76276016,
+    "lng": 67.26819611,
+    "mahalla": ""
+  },
+  {
+    "id": "lldjtfejnduuXWc9ftkb",
+    "name": "6-bog'cha",
+    "type": "dmtt",
+    "lat": 39.75558472,
+    "lng": 67.26769257,
+    "mahalla": ""
+  },
+  {
+    "id": "zp9tPhVJMc4G2mA2dfpY",
+    "name": "65-maktab",
+    "type": "maktab",
+    "lat": 39.626708,
+    "lng": 67.352043,
+    "mahalla": "Sariqipchoq MFY"
+  },
+  {
+    "id": "YzE43DGCRB2gusIcZAOw",
+    "name": "33-maktab",
+    "type": "maktab",
+    "lat": 39.773815,
+    "lng": 67.344636,
+    "mahalla": "Olmazor MFY"
+  },
+  {
+    "id": "bdKDIecrngDUekwuv91E",
+    "name": "66-maktab",
+    "type": "maktab",
+    "lat": 39.786551,
+    "lng": 67.278228,
+    "mahalla": "Yangiariq MFY"
+  },
+  {
+    "id": "gLurqIkbRSZKkU0Ito9H",
+    "name": "23-bog'cha",
+    "type": "dmtt",
+    "lat": 39.72235107,
+    "lng": 67.29816437,
+    "mahalla": ""
+  },
+  {
+    "id": "AqH5AgJ9yf6gGRLKuJnj",
+    "name": "15-maktab",
+    "type": "maktab",
+    "lat": 39.704798,
+    "lng": 67.283941,
+    "mahalla": "Oqtepa MFY"
+  },
+  {
+    "id": "ysiHXEk5ZDR9CwTdlKnG",
+    "name": "67-maktab",
+    "type": "maktab",
+    "lat": 39.591267,
+    "lng": 67.375509,
+    "mahalla": "Avliyoparpi MFY"
+  },
+  {
+    "id": "iqo30l5LAdbjXP0dlznV",
+    "name": "Bulungʻur tumani Kadastr palatasi",
+    "type": "tashkilot",
+    "lat": 39.75195366807725,
+    "lng": 67.27140267344,
+    "mahalla": ""
+  },
+  {
+    "id": "Zcufh4CVPABTn5eR0Qse",
+    "name": "11-bog'cha",
+    "type": "dmtt",
+    "lat": 39.75760269,
+    "lng": 67.38375092,
+    "mahalla": ""
+  },
+  {
+    "id": "qZIkPdZPPNExRHGchjCR",
+    "name": "48-maktab",
+    "type": "maktab",
+    "lat": 39.64,
+    "lng": 67.252035,
+    "mahalla": "Qirqshodi MFY"
+  },
+  {
+    "id": "VvYl2yV5TPYBtr0mzrPK",
+    "name": "35-bog'cha",
+    "type": "dmtt",
+    "lat": 39.60361181353493,
+    "lng": 67.37280496272602,
+    "mahalla": ""
+  },
+  {
+    "id": "sNItPtWN1Gj0RlcBCeYx",
+    "name": "Bulung'ur IIB",
+    "type": "tashkilot",
+    "lat": 39.75920103327994,
+    "lng": 67.2747527910501,
+    "mahalla": ""
+  },
+  {
+    "id": "ylVUPCwZVg33Ocu5YA2P",
+    "name": "19-maktab",
+    "type": "maktab",
+    "lat": 39.810552,
+    "lng": 67.209203,
+    "mahalla": "Bog'bon MFY"
+  },
+  {
+    "id": "zpknrQuTLC7lhO9BKnAp",
+    "name": "7-maktab",
+    "type": "maktab",
+    "lat": 39.658019,
+    "lng": 67.391955,
+    "mahalla": "Nebo'sa MFY"
+  },
+  {
+    "id": "LCrVMEDf023vBQ19WDAT",
+    "name": "46-maktab",
+    "type": "maktab",
+    "lat": 39.762815,
+    "lng": 67.257995,
+    "mahalla": "Samaqand MFY"
+  },
+  {
+    "id": "kFolBcW4FkzYcENkCnav",
+    "name": "70-maktab",
+    "type": "maktab",
+    "lat": 39.696985,
+    "lng": 67.376608,
+    "mahalla": "Changal MFY"
+  },
+  {
+    "id": "NOYqo9iSYZspMYRzf9mv",
+    "name": "12-bog'cha",
+    "type": "dmtt",
+    "lat": 39.76451111,
+    "lng": 67.38282776,
+    "mahalla": ""
+  },
+  {
+    "id": "ExqHgx6BSUpKZV7OHRN2",
+    "name": "50-maktab",
+    "type": "maktab",
+    "lat": 39.713789,
+    "lng": 67.387784,
+    "mahalla": "Nebo'sa MFY"
+  },
+  {
+    "id": "yPAFIBqwqE261MK1FjrW",
+    "name": "55-maktab",
+    "type": "maktab",
+    "lat": 39.636811,
+    "lng": 67.233552,
+    "mahalla": "Navbahor MFY"
+  },
+  {
+    "id": "ioMA5Tqj9mpsQ0jQ3ARh",
+    "name": "1-IDUM",
+    "type": "maktab",
+    "lat": 39.763053,
+    "lng": 67.289976,
+    "mahalla": "Navbahor MFY"
+  },
+  {
+    "id": "09FqNJ3w8HILOXnZQSxs",
+    "name": "4-maktab",
+    "type": "maktab",
+    "lat": 39.733873,
+    "lng": 67.333104,
+    "mahalla": "Nurli yo'l MFY"
+  },
+  {
+    "id": "6rAZqJgBPa4dtq5XUHcs",
+    "name": "41-maktab",
+    "type": "maktab",
+    "lat": 39.54285,
+    "lng": 67.438703,
+    "mahalla": "Xo'jamazgil MFY"
+  },
+  {
+    "id": "gcM66LRFfLXDVtL1jgRn",
+    "name": "5-bog'cha",
+    "type": "dmtt",
+    "lat": 39.75106812,
+    "lng": 67.27368164,
+    "mahalla": ""
+  },
+  {
+    "id": "QMZb3ZvpZ3BKmeMORDQo",
+    "name": "24-maktab",
+    "type": "maktab",
+    "lat": 39.852006,
+    "lng": 67.350459,
+    "mahalla": "Kattaqishloq hududi"
+  },
+  {
+    "id": "nHSj3rvabbBaP6MPzJs6",
+    "name": "14-bog'cha",
+    "type": "dmtt",
+    "lat": 39.60176468,
+    "lng": 67.36036682,
+    "mahalla": ""
+  },
+  {
+    "id": "fxwafqnquuRPIAwgz15a",
+    "name": "26-bog'cha",
+    "type": "dmtt",
+    "lat": 39.6761322,
+    "lng": 67.26257324,
+    "mahalla": ""
+  },
+  {
+    "id": "1rJTffKWjWbPcqP8F97J",
+    "name": "36-maktab",
+    "type": "maktab",
+    "lat": 39.725364,
+    "lng": 67.300787,
+    "mahalla": "Mingchinor MFY"
+  },
+  {
+    "id": "Sf8dBm1Zp4RwOWy063TV",
+    "name": "2-bog'cha",
+    "type": "dmtt",
+    "lat": 39.76038361,
+    "lng": 67.26345062,
+    "mahalla": ""
+  },
+  {
+    "id": "PVAdUvkXd14PHRBzlcMI",
+    "name": "Bulung'ur Moliya Bo'limi",
+    "type": "tashkilot",
+    "lat": 39.7501925814147,
+    "lng": 67.27589706406806,
+    "mahalla": ""
+  },
+  {
+    "id": "ZiMlCmMg0qIeETAs0ZYF",
+    "name": "45-maktab",
+    "type": "maktab",
+    "lat": 39.61209,
+    "lng": 67.28261,
+    "mahalla": "Dehqonobod MFY"
+  },
+  {
+    "id": "l4kNMtHlpT05f0wJSFFP",
+    "name": "18-bog'cha",
+    "type": "dmtt",
+    "lat": 39.67995453,
+    "lng": 67.34668732,
+    "mahalla": ""
+  },
+  {
+    "id": "B1zf4JKl3HNDgQrSuZjB",
+    "name": "25-bog'cha",
+    "type": "dmtt",
+    "lat": 39.7057724,
+    "lng": 67.21875763,
+    "mahalla": ""
+  },
+  {
+    "id": "p9WLJGuNaRR6Iql9cAvJ",
+    "name": "39-maktab",
+    "type": "maktab",
+    "lat": 39.606999,
+    "lng": 67.445464,
+    "mahalla": "Xo'jamazgil MFY"
+  },
+  {
+    "id": "qQALiy29pnoKkgi8Dk8C",
+    "name": "4-bog'cha",
+    "type": "dmtt",
+    "lat": 39.7703,
+    "lng": 67.276368,
+    "mahalla": ""
+  },
+  {
+    "id": "wz7ISJ0FsVNtKl7INdX6",
+    "name": "22-maktab",
+    "type": "maktab",
+    "lat": 39.751044,
+    "lng": 67.27227,
+    "mahalla": "Bulung'ur MFY"
+  },
+  {
+    "id": "pPSUlCfO1PBRdadtQvGk",
+    "name": "54-maktab",
+    "type": "maktab",
+    "lat": 39.766777,
+    "lng": 67.292149,
+    "mahalla": "Zarafshon MFY"
+  },
+  {
+    "id": "aoh18dhMVdFbxD2GhH1z",
+    "name": "1-bog'cha",
+    "type": "dmtt",
+    "lat": 39.7620873217514,
+    "lng": 67.27672517138619,
+    "mahalla": ""
+  },
+  {
+    "id": "FkeMGEl2iuD1UTvSEkZG",
+    "name": "16-bog'cha",
+    "type": "dmtt",
+    "lat": 39.73789215,
+    "lng": 67.33200073,
+    "mahalla": ""
+  },
+  {
+    "id": "QfPZZ1g2dAq0KkA6DETn",
+    "name": "20-maktab",
+    "type": "maktab",
+    "lat": 39.785259,
+    "lng": 67.298407,
+    "mahalla": "Yangi ariq MFY"
+  },
+  {
+    "id": "rd4UaIkofflKM3NfCO7X",
+    "name": "16-maktab",
+    "type": "maktab",
+    "lat": 39.716259,
+    "lng": 67.231218,
+    "mahalla": "Gulobod MFY"
+  },
+  {
+    "id": "NFL4Q5fhItJWaQpQ5vEe",
+    "name": "24-bog'cha",
+    "type": "dmtt",
+    "lat": 39.7830658,
+    "lng": 67.30770111,
+    "mahalla": ""
+  },
+  {
+    "id": "V6PLgAnVeinlCackyJP5",
+    "name": "32-maktab",
+    "type": "maktab",
+    "lat": 39.790927,
+    "lng": 67.219259,
+    "mahalla": "Mingtepa MFY"
+  },
+  {
+    "id": "1oXel10Rt76oQXFtFbmx",
+    "name": "9-bog'cha",
+    "type": "dmtt",
+    "lat": 39.76014328,
+    "lng": 67.27340698,
+    "mahalla": ""
+  },
+  {
+    "id": "8LtyChYaxnhRftd8YOwv",
+    "name": "59-maktab",
+    "type": "maktab",
+    "lat": 39.588229,
+    "lng": 67.309715,
+    "mahalla": "Saxovat MFY"
+  },
+  {
+    "id": "XzbaLg1ZYZUHqbEpetil",
+    "name": "6-maktab",
+    "type": "maktab",
+    "lat": 39.696866,
+    "lng": 67.388308,
+    "mahalla": "Changal MFY"
+  },
+  {
+    "id": "6cKQMB1xyoyz9tNwbS1E",
+    "name": "37-maktab",
+    "type": "maktab",
+    "lat": 39.669654,
+    "lng": 67.311815,
+    "mahalla": "Beshkubi MFY"
+  },
+  {
+    "id": "aEaP4xMmz6vmo3snjLkJ",
+    "name": "33-bog'cha",
+    "type": "dmtt",
+    "lat": 39.74041748,
+    "lng": 67.37062836,
+    "mahalla": ""
+  },
+  {
+    "id": "EhdUiMlGLk7v2YTJTZWV",
+    "name": "57-maktab",
+    "type": "maktab",
+    "lat": 39.696772,
+    "lng": 67.329097,
+    "mahalla": "Isori O'roqli MFY"
+  },
+  {
+    "id": "8j4jz0JTzxXmNsKTaGWr",
+    "name": "43-maktab",
+    "type": "maktab",
+    "lat": 39.627196,
+    "lng": 67.32373,
+    "mahalla": "Xo'jabachcha MFY"
+  },
+  {
+    "id": "ZUEGQROjXnAiWdRPeGZS",
+    "name": "17-bog'cha",
+    "type": "dmtt",
+    "lat": 39.777668,
+    "lng": 67.22707367,
+    "mahalla": ""
+  },
+  {
+    "id": "PsDaTiR9bw3JDNxjbbCW",
+    "name": "29-maktab",
+    "type": "maktab",
+    "lat": 39.658802,
+    "lng": 67.236421,
+    "mahalla": "Qo'ng'irot MFY"
+  },
+  {
+    "id": "6orkXcYDAIKqvfOOmQSg",
+    "name": "40-maktab",
+    "type": "maktab",
+    "lat": 39.584791,
+    "lng": 67.351763,
+    "mahalla": "Esonturdi MFY"
+  },
+  {
+    "id": "ogUOaPCDMQZmT7aJDhua",
+    "name": "26-maktab",
+    "type": "maktab",
+    "lat": 39.773378,
+    "lng": 67.415331,
+    "mahalla": "Oqtosh MFY"
+  },
+  {
+    "id": "n7VYp8kzFSGRkD3XppOE",
+    "name": "Toza hudud DUK",
+    "type": "tashkilot",
+    "lat": 39.7411134224802,
+    "lng": 67.27751776616573,
+    "mahalla": ""
+  },
+  {
+    "id": "Xmzm9YYHVkFy71xjGZJe",
+    "name": "18-maktab",
+    "type": "maktab",
+    "lat": 39.78795,
+    "lng": 67.250063,
+    "mahalla": "Yangiobod MFY"
+  },
+  {
+    "id": "lQltchJktFJoCIiITYpS",
+    "name": "58-maktab",
+    "type": "maktab",
+    "lat": 39.576705,
+    "lng": 67.333045,
+    "mahalla": "Esonturdi MFY"
+  },
+  {
+    "id": "ktEqpQFrRcthvxAGqe1K",
+    "name": "69-maktab",
+    "type": "maktab",
+    "lat": 39.588644,
+    "lng": 67.340018,
+    "mahalla": "Alisher Navoiy MFY"
+  },
+  {
+    "id": "BwJPG1PBm8xko4WpFs3t",
+    "name": "34-maktab",
+    "type": "maktab",
+    "lat": 39.768763,
+    "lng": 67.274965,
+    "mahalla": "Ulug'bek MFY"
+  },
+  {
+    "id": "EFuw7qt5oqBYFN0b8yqi",
+    "name": "13-bog'cha",
+    "type": "dmtt",
+    "lat": 39.78581238,
+    "lng": 67.24762726,
+    "mahalla": ""
+  },
+  {
+    "id": "hwZYsgDYBKF4WCu8xqpR",
+    "name": "15-bog'cha",
+    "type": "dmtt",
+    "lat": 39.6995697,
+    "lng": 67.38434601,
+    "mahalla": ""
+  },
+  {
+    "id": "t77oYdy24sigqfdzSq24",
+    "name": "22-bog'cha",
+    "type": "dmtt",
+    "lat": 39.63895798,
+    "lng": 67.25875854,
+    "mahalla": ""
+  },
+  {
+    "id": "ZBllU6luQ6DbDqK7VPo4",
+    "name": "30-maktab",
+    "type": "maktab",
+    "lat": 39.781143,
+    "lng": 67.456265,
+    "mahalla": "Oqtosh MFY"
+  },
+  {
+    "id": "uaai0Hc7rTtfL4CSss3d",
+    "name": "21-maktab",
+    "type": "maktab",
+    "lat": 39.768612,
+    "lng": 67.227248,
+    "mahalla": "Mingtepa MFY"
+  },
+  {
+    "id": "gXKL2FvVNn88KVqZ9cBu",
+    "name": "27-bog'cha",
+    "type": "dmtt",
+    "lat": 39.77771378,
+    "lng": 67.3099823,
+    "mahalla": ""
+  },
+  {
+    "id": "1BYZk7eV7y8DloNRF7pb",
+    "name": "8-maktab",
+    "type": "maktab",
+    "lat": 39.687509,
+    "lng": 67.339407,
+    "mahalla": "O'roqli MFY"
+  },
+  {
+    "id": "T8bguGV2xvuEaf6v3YGq",
+    "name": "63-maktab",
+    "type": "maktab",
+    "lat": 39.626708,
+    "lng": 67.352043,
+    "mahalla": "Bulungur ariq MFY"
+  },
+  {
+    "id": "Qu1rhrXkV6NePwoFinIN",
+    "name": "28-maktab",
+    "type": "maktab",
+    "lat": 39.587796,
+    "lng": 67.29154,
+    "mahalla": "Mirza Ariq MFY"
+  },
+  {
+    "id": "aRlkwxNJfSMe4psaU7vu",
+    "name": "29-bog'cha",
+    "type": "dmtt",
+    "lat": 39.61381149,
+    "lng": 67.28142548,
+    "mahalla": ""
+  },
+  {
+    "id": "yB5mAm5zG3ITDfaF5EF8",
+    "name": "42-maktab",
+    "type": "maktab",
+    "lat": 39.6557,
+    "lng": 67.341639,
+    "mahalla": "Kichik kildon MFY"
+  },
+  {
+    "id": "uxEea5vmx2KvgT1P7noh",
+    "name": "12-maktab",
+    "type": "maktab",
+    "lat": 39.636242,
+    "lng": 67.317443,
+    "mahalla": "Suluvqo'rg'on MFY"
+  },
+  {
+    "id": "iLw2ChOO7ahMLvr3LIET",
+    "name": "21-bog'cha",
+    "type": "dmtt",
+    "lat": 39.59784317,
+    "lng": 67.32663727,
+    "mahalla": ""
+  },
+  {
+    "id": "bDH1X481qIoaChTS6L9H",
+    "name": "60-maktab",
+    "type": "maktab",
+    "lat": 39.624176,
+    "lng": 67.292457,
+    "mahalla": "Saxovat MFY"
+  },
+  {
+    "id": "dQlaV500AmavL4HH2k7e",
+    "name": "3-bog'cha",
+    "type": "dmtt",
+    "lat": 39.76484299,
+    "lng": 67.26593018,
+    "mahalla": ""
+  },
+  {
+    "id": "jSBFovhFpBTZcCEjpZ4c",
+    "name": "11-maktab",
+    "type": "maktab",
+    "lat": 39.634537,
+    "lng": 67.408369,
+    "mahalla": "Niyozmat MFY"
+  },
+  {
+    "id": "ZQrYjtTCVKE00RlmuUBW",
+    "name": "Bulung'ur Markaziy Shifoxonasi",
+    "type": "tashkilot",
+    "lat": 39.76038121441895,
+    "lng": 67.27112413235098,
+    "mahalla": ""
+  },
+  {
+    "id": "mjqF2KMYHeMVixqws3IQ",
+    "name": "25-maktab",
+    "type": "maktab",
+    "lat": 39.855002,
+    "lng": 67.430043,
+    "mahalla": "Lalmikor MFY"
+  },
+  {
+    "id": "1DEA3MTlArZfZxaxaCJp",
+    "name": "56-maktab",
+    "type": "maktab",
+    "lat": 39.636811,
+    "lng": 67.233552,
+    "mahalla": "Qirqshodi MFY"
+  },
+  {
+    "id": "usHrGJ7xTSqYVp0syHnW",
+    "name": "23-maktab",
+    "type": "maktab",
+    "lat": 39.759023,
+    "lng": 67.267052,
+    "mahalla": "Bulung'ur MFY"
+  },
+  {
+    "id": "kixYUatEosk78eiPPaGH",
+    "name": "9-maktab",
+    "type": "maktab",
+    "lat": 39.598829,
+    "lng": 67.330429,
+    "mahalla": "Alisher Navoiy MFY"
+  },
+  {
+    "id": "Kj5NlqvYmvnfKOHxfJYh",
+    "name": "44-maktab",
+    "type": "maktab",
+    "lat": 39.603235,
+    "lng": 67.30779,
+    "mahalla": "Saxovat MFY"
+  },
+  {
+    "id": "1vqTYLxfhcYFeYbFuBo8",
+    "name": "34-bog'cha",
+    "type": "dmtt",
+    "lat": 39.75118637,
+    "lng": 67.27560425,
+    "mahalla": ""
+  },
+  {
+    "id": "WwB50mKNSMPJpRRxZObY",
+    "name": "53-maktab",
+    "type": "maktab",
+    "lat": 39.692397,
+    "lng": 67.240538,
+    "mahalla": "Qo'ng'irot MFY"
+  },
+  {
+    "id": "n600PQaqD1Vvfubm7jss",
+    "name": "13-maktab",
+    "type": "maktab",
+    "lat": 39.607761,
+    "lng": 67.358619,
+    "mahalla": "Cho'yantepa MFY"
+  },
+  {
+    "id": "Xv8TFljcIQAobuFYV0el",
+    "name": "52-maktab",
+    "type": "maktab",
+    "lat": 39.67277,
+    "lng": 67.264766,
+    "mahalla": "Gulzor MFY"
+  },
+  {
+    "id": "dxpVLseBWMvWNOKmupOK",
+    "name": "30-bog'cha",
+    "type": "dmtt",
+    "lat": 39.77898026,
+    "lng": 67.42514038,
+    "mahalla": ""
+  },
+  {
+    "id": "msjJEF235Aln1n37zLST",
+    "name": "68-maktab",
+    "type": "maktab",
+    "lat": 39.632537,
+    "lng": 67.371427,
+    "mahalla": "Sariqipchoq MFY"
+  },
+  {
+    "id": "Pi2VfTFoXWwpGb8f5ERF",
+    "name": "61-maktab",
+    "type": "maktab",
+    "lat": 39.756362,
+    "lng": 67.400919,
+    "mahalla": "Fozil Yo'ldosh MFY"
+  },
+  {
+    "id": "sdYsQkmaUvPHQdLtRCgV",
+    "name": "62-maktab",
+    "type": "maktab",
+    "lat": 39.640075,
+    "lng": 67.275445,
+    "mahalla": "Kaftarxona MFY"
+  },
+  {
+    "id": "RMdIZhyXM8eV2G9bRSwU",
+    "name": "Prokuratura",
+    "type": "tashkilot",
+    "lat": 39.74999048664861,
+    "lng": 67.27150996179576,
+    "mahalla": ""
+  },
+  {
+    "id": "ZHLryHfLu3NeHYVhcJsB",
+    "name": "2-maktab",
+    "type": "maktab",
+    "lat": 39.643976,
+    "lng": 67.355608,
+    "mahalla": "Kildon MFY"
+  },
+  {
+    "id": "f1WKhFfhLTXMwItwA7Po",
+    "name": "51-maktab",
+    "type": "maktab",
+    "lat": 39.694999,
+    "lng": 67.315246,
+    "mahalla": "Bulung'urariq MFY"
+  },
+  {
+    "id": "gjap6nu1lAMGNRlYnjRc",
+    "name": "49-maktab",
+    "type": "maktab",
+    "lat": 39.621929,
+    "lng": 67.243999,
+    "mahalla": "Elobod MFY"
+  },
+  {
+    "id": "S2Yx29V6ZOWCY9GaNy9h",
+    "name": "72-maktab",
+    "type": "maktab",
+    "lat": 39.603177,
+    "lng": 67.372232,
+    "mahalla": "Chorbog' MFY"
+  },
+  {
+    "id": "yjVfAWzf6aU5g1J27WB7",
+    "name": "5-maktab",
+    "type": "maktab",
+    "lat": 39.760191,
+    "lng": 67.383398,
+    "mahalla": "Fozil Yo'ldosh MFY"
+  },
+  {
+    "id": "BIT9XDtxOS9a5XHQNGwZ",
+    "name": "7-bog'cha",
+    "type": "dmtt",
+    "lat": 39.76442719,
+    "lng": 67.28821564,
+    "mahalla": ""
+  },
+  {
+    "id": "l5CdZQJehD7wwgvA9cuh",
+    "name": "14-maktab",
+    "type": "maktab",
+    "lat": 39.642346,
+    "lng": 67.268544,
+    "mahalla": "Kaptarxona MFY"
+  },
+  {
+    "id": "ryxcc5ztPZri5e4KiaP3",
+    "name": "31-maktab",
+    "type": "maktab",
+    "lat": 39.819431,
+    "lng": 67.518886,
+    "mahalla": "G'o'bdin MFY"
+  },
+  {
+    "id": "mqxjJBxjQ5UM69919Vww",
+    "name": "73-maktab",
+    "type": "maktab",
+    "lat": 39.810143,
+    "lng": 67.371458,
+    "mahalla": "Olmazor MFY"
+  },
+  {
+    "id": "0zLjPrlwtbvNvkn3DJnZ",
+    "name": "28-bog'cha",
+    "type": "dmtt",
+    "lat": 39.8255043,
+    "lng": 67.42173004,
+    "mahalla": ""
+  },
+  {
+    "id": "wA2uBBQxJeghG1XKYMpQ",
+    "name": "20-bog'cha",
+    "type": "dmtt",
+    "lat": 39.69245148,
+    "lng": 67.24021149,
+    "mahalla": ""
+  },
+  {
+    "id": "ho0NcLK2tojDT31ZIaBs",
+    "name": "10-maktab",
+    "type": "maktab",
+    "lat": 39.564282,
+    "lng": 67.388776,
+    "mahalla": "Xo'jamazgil MFY"
+  },
+  {
+    "id": "tpMgmlNBwB2fWSW2fce0",
+    "name": "3-maktab",
+    "type": "maktab",
+    "lat": 39.783138,
+    "lng": 67.312814,
+    "mahalla": "Yangiariq MFY"
+  },
+  {
+    "id": "seed_71_maktab",
+    "name": "71-maktab",
+    "type": "maktab",
+    "lat": 39.758698,
+    "lng": 67.386209,
+    "mahalla": "Bo'dana MFY"
+  }
+]
