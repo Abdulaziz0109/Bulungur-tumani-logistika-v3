@@ -3,19 +3,10 @@ package uz.bulungur.mmtb
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
-import android.os.Environment
-import android.provider.Settings
-import android.view.ViewGroup
-import android.widget.LinearLayout
-import android.widget.ProgressBar
-import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import androidx.core.content.FileProvider
 import org.json.JSONObject
 import java.io.BufferedReader
-import java.io.File
-import java.io.FileOutputStream
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
@@ -35,7 +26,6 @@ object AppUpdater {
     )
 
     private val executor = Executors.newSingleThreadExecutor()
-    private var pendingInstallFile: File? = null
 
     fun checkForUpdate(activity: Activity, silentIfUpToDate: Boolean) {
         executor.execute {
@@ -47,7 +37,7 @@ object AppUpdater {
                     if (!silentIfUpToDate) {
                         Toast.makeText(
                             activity,
-                            "Yangilanishni tekshirib bo'lmadi. Internetni tekshiring.",
+                            "Hozircha yangi versiya yo'q (v${BuildConfig.VERSION_NAME})",
                             Toast.LENGTH_SHORT
                         ).show()
                     }
@@ -64,14 +54,6 @@ object AppUpdater {
                     ).show()
                 }
             }
-        }
-    }
-
-    fun resumePendingInstallIfAny(activity: Activity) {
-        val file = pendingInstallFile ?: return
-        if (file.exists() && activity.packageManager.canRequestPackageInstalls()) {
-            pendingInstallFile = null
-            launchApkInstaller(activity, file)
         }
     }
 
@@ -133,7 +115,6 @@ object AppUpdater {
     }
 
     private fun extractVersionCode(tagName: String): Int {
-        // Expects tags like v1.0.5 -> 5, or v12 -> 12
         val match = Regex("""(\d+)$""").find(tagName)
         return match?.groupValues?.get(1)?.toIntOrNull() ?: 0
     }
@@ -153,179 +134,15 @@ object AppUpdater {
         AlertDialog.Builder(activity)
             .setTitle("Yangi versiya mavjud!")
             .setMessage(message)
-            .setPositiveButton("Yangilash") { _, _ ->
-                downloadAndInstallApk(activity, release)
+            .setPositiveButton("Yuklab olish") { _, _ ->
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(release.apkUrl))
+                    activity.startActivity(intent)
+                } catch (_: Exception) {
+                    Toast.makeText(activity, "Yuklab olish havolasini ochib bo'lmadi", Toast.LENGTH_SHORT).show()
+                }
             }
             .setNegativeButton("Keyinroq", null)
             .show()
-    }
-
-    private fun downloadAndInstallApk(activity: Activity, release: ReleaseInfo) {
-        val paddingPx = (20 * activity.resources.displayMetrics.density).toInt()
-        val container = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(paddingPx, paddingPx, paddingPx, paddingPx)
-        }
-        val statusText = TextView(activity).apply {
-            text = "Yuklab olinmoqda... 0%"
-            textSize = 14f
-        }
-        val progressBar = ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal).apply {
-            isIndeterminate = false
-            max = 100
-            progress = 0
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = (12 * activity.resources.displayMetrics.density).toInt()
-            }
-        }
-        container.addView(statusText)
-        container.addView(progressBar)
-
-        val progressDialog = AlertDialog.Builder(activity)
-            .setTitle("Ilova yangilanmoqda (v${release.versionName})")
-            .setView(container)
-            .setCancelable(false)
-            .create()
-        progressDialog.show()
-
-        executor.execute {
-            val apkFile = downloadFileFollowingRedirects(
-                activity = activity,
-                startUrl = release.apkUrl,
-                onProgress = { pct ->
-                    activity.runOnUiThread {
-                        if (!activity.isFinishing && progressDialog.isShowing) {
-                            progressBar.progress = pct
-                            statusText.text = "Yuklab olinmoqda... $pct%"
-                        }
-                    }
-                }
-            )
-
-            activity.runOnUiThread {
-                if (progressDialog.isShowing) {
-                    progressDialog.dismiss()
-                }
-                if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
-
-                if (apkFile == null || !apkFile.exists()) {
-                    Toast.makeText(
-                        activity,
-                        "Yangilanish faylini yuklab bo'lmadi. Qayta urinib ko'ring.",
-                        Toast.LENGTH_LONG
-                    ).show()
-                    return@runOnUiThread
-                }
-
-                installDownloadedApk(activity, apkFile)
-            }
-        }
-    }
-
-    private fun downloadFileFollowingRedirects(
-        activity: Activity,
-        startUrl: String,
-        onProgress: (Int) -> Unit
-    ): File? {
-        var currentUrl = startUrl
-        var conn: HttpURLConnection? = null
-        return try {
-            var redirects = 0
-            while (redirects < 6) {
-                conn = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
-                    instanceFollowRedirects = false
-                    connectTimeout = 15000
-                    readTimeout = 30000
-                    setRequestProperty("User-Agent", "Bulungur-MMTB-Android/${BuildConfig.VERSION_NAME}")
-                }
-                val code = conn.responseCode
-                if (code in listOf(301, 302, 303, 307, 308)) {
-                    val nextLocation = conn.getHeaderField("Location") ?: return null
-                    conn.disconnect()
-                    currentUrl = nextLocation
-                    redirects++
-                } else {
-                    break
-                }
-            }
-
-            val activeConn = conn ?: return null
-            if (activeConn.responseCode !in 200..299) return null
-
-            val totalBytes = activeConn.contentLengthLong
-            val dir = activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: return null
-            if (!dir.exists()) dir.mkdirs()
-            val outFile = File(dir, "Bulungur-MMTB-update.apk")
-            if (outFile.exists()) outFile.delete()
-
-            activeConn.inputStream.use { input ->
-                FileOutputStream(outFile).use { output ->
-                    val buffer = ByteArray(16 * 1024)
-                    var downloaded = 0L
-                    var lastPct = -1
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read <= 0) break
-                        output.write(buffer, 0, read)
-                        downloaded += read
-                        if (totalBytes > 0) {
-                            val pct = ((downloaded * 100) / totalBytes).toInt().coerceIn(0, 100)
-                            if (pct != lastPct) {
-                                lastPct = pct
-                                onProgress(pct)
-                            }
-                        }
-                    }
-                }
-            }
-            outFile
-        } catch (_: Exception) {
-            null
-        } finally {
-            conn?.disconnect()
-        }
-    }
-
-    private fun installDownloadedApk(activity: Activity, apkFile: File) {
-        if (!activity.packageManager.canRequestPackageInstalls()) {
-            pendingInstallFile = apkFile
-            Toast.makeText(
-                activity,
-                "Yangilash uchun ushbu ilovaga ruxsatni yoqing va orqaga qayting",
-                Toast.LENGTH_LONG
-            ).show()
-            val intent = Intent(
-                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                Uri.parse("package:${activity.packageName}")
-            )
-            activity.startActivity(intent)
-            return
-        }
-        launchApkInstaller(activity, apkFile)
-    }
-
-    private fun launchApkInstaller(activity: Activity, apkFile: File) {
-        try {
-            val contentUri = FileProvider.getUriForFile(
-                activity,
-                "${activity.packageName}.fileprovider",
-                apkFile
-            )
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(contentUri, "application/vnd.android.package-archive")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            activity.startActivity(intent)
-        } catch (_: Exception) {
-            Toast.makeText(
-                activity,
-                "O'rnatish oynasini ochib bo'lmadi",
-                Toast.LENGTH_LONG
-            ).show()
-        }
     }
 }

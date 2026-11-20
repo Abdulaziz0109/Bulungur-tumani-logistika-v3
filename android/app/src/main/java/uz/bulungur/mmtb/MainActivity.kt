@@ -171,11 +171,6 @@ class MainActivity : AppCompatActivity() {
         loadStartUrl(intent)
     }
 
-    override fun onResume() {
-        super.onResume()
-        AppUpdater.resumePendingInstallIfAny(this)
-    }
-
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
