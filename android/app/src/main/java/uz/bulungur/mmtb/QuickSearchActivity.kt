@@ -26,6 +26,10 @@ import java.util.concurrent.Executors
  */
 class QuickSearchActivity : AppCompatActivity() {
 
+    companion object {
+        const val EXTRA_NAV_URL = "extra_nav_url"
+    }
+
     private lateinit var etSearch: EditText
     private lateinit var btnClear: TextView
     private lateinit var tvSubtitle: TextView
@@ -52,6 +56,11 @@ class QuickSearchActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        if (handleDirectNavIntent(intent)) {
+            return
+        }
+
         setContentView(R.layout.activity_quick_search)
 
         etSearch = findViewById(R.id.et_quick_search)
@@ -139,6 +148,22 @@ class QuickSearchActivity : AppCompatActivity() {
             val imm = getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager
             imm?.showSoftInput(etSearch, InputMethodManager.SHOW_IMPLICIT)
         }, 60)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleDirectNavIntent(intent)
+    }
+
+    private fun handleDirectNavIntent(intent: Intent?): Boolean {
+        val navUrl = intent?.getStringExtra(EXTRA_NAV_URL)
+        if (!navUrl.isNullOrBlank()) {
+            launchExternalUrl(navUrl)
+            overridePendingTransition(0, 0)
+            return true
+        }
+        return false
     }
 
     override fun onDestroy() {

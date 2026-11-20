@@ -7,7 +7,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.view.View
+import android.os.Build
+import android.os.Bundle
 import android.widget.RemoteViews
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -31,6 +32,23 @@ class MmtbWidgetProvider : AppWidgetProvider() {
         executor.execute {
             try {
                 updateAllWidgets(context, appWidgetManager, appWidgetIds, forceNetwork = true)
+            } finally {
+                pendingResult.finish()
+            }
+        }
+    }
+
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: Bundle?
+    ) {
+        super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
+        val pendingResult = goAsync()
+        executor.execute {
+            try {
+                updateAllWidgets(context, appWidgetManager, intArrayOf(appWidgetId), forceNetwork = false)
             } finally {
                 pendingResult.finish()
             }
@@ -78,7 +96,7 @@ class MmtbWidgetProvider : AppWidgetProvider() {
                 "dmtt" -> loc.type == "dmtt" || loc.type == "bogcha"
                 else -> true
             }
-        }.take(4)
+        }
 
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_mmtb)
@@ -162,45 +180,20 @@ class MmtbWidgetProvider : AppWidgetProvider() {
                 buildQuickSearchPendingIntent(context, 106)
             )
 
-            // Populate 4 Meteum-style facility rows
-            val rowIds = intArrayOf(R.id.row_0, R.id.row_1, R.id.row_2, R.id.row_3)
-            val nameIds = intArrayOf(R.id.row_0_name, R.id.row_1_name, R.id.row_2_name, R.id.row_3_name)
-            val distIds = intArrayOf(R.id.row_0_dist, R.id.row_1_dist, R.id.row_2_dist, R.id.row_3_dist)
-            val yandexIds = intArrayOf(R.id.row_0_yandex, R.id.row_1_yandex, R.id.row_2_yandex, R.id.row_3_yandex)
-            val googleIds = intArrayOf(R.id.row_0_google, R.id.row_1_google, R.id.row_2_google, R.id.row_3_google)
-
-            for (i in 0 until 4) {
-                val loc = filtered.getOrNull(i)
-                if (loc == null) {
-                    views.setViewVisibility(rowIds[i], View.GONE)
-                } else {
-                    views.setViewVisibility(rowIds[i], View.VISIBLE)
-                    views.setTextViewText(nameIds[i], loc.name)
-                    views.setTextViewText(
-                        distIds[i],
-                        String.format(Locale.US, "%.1f km", loc.distKm)
-                    )
-
-                    val yandexUrl = WidgetDataFetcher.buildYandexUrl(
-                        loc,
-                        snapshot.hasGps,
-                        snapshot.refLat,
-                        snapshot.refLng
-                    )
-                    val googleUrl = WidgetDataFetcher.buildGoogleUrl(loc)
-
-                    views.setOnClickPendingIntent(
-                        yandexIds[i],
-                        buildExternalUrlPendingIntent(context, yandexUrl, 200 + i * 2)
-                    )
-                    views.setOnClickPendingIntent(
-                        googleIds[i],
-                        buildExternalUrlPendingIntent(context, googleUrl, 201 + i * 2)
-                    )
-                }
+            // Bind scrollable & vertically expandable ListView adapter
+            val serviceIntent = Intent(context, MmtbWidgetService::class.java).apply {
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
             }
+            views.setRemoteAdapter(R.id.lv_widget_locations, serviceIntent)
+            views.setEmptyView(R.id.lv_widget_locations, R.id.tv_widget_empty)
+            views.setPendingIntentTemplate(
+                R.id.lv_widget_locations,
+                buildRowNavTemplatePendingIntent(context, appWidgetId)
+            )
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
+            appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.lv_widget_locations)
         }
     }
 
@@ -236,6 +229,27 @@ class MmtbWidgetProvider : AppWidgetProvider() {
         )
     }
 
+    private fun buildRowNavTemplatePendingIntent(
+        context: Context,
+        appWidgetId: Int
+    ): PendingIntent {
+        // Explicit Intent + FLAG_MUTABLE satisfies Android 14 (targetSdk 34) PendingIntentTemplate rules
+        val intent = Intent(context, QuickSearchActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION
+        }
+        val mutabilityFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            PendingIntent.FLAG_MUTABLE
+        } else {
+            0
+        }
+        return PendingIntent.getActivity(
+            context,
+            300 + appWidgetId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or mutabilityFlag
+        )
+    }
+
     private fun buildOpenAppPendingIntent(
         context: Context,
         routePath: String,
@@ -244,22 +258,6 @@ class MmtbWidgetProvider : AppWidgetProvider() {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(MainActivity.EXTRA_START_PATH, routePath)
-        }
-        return PendingIntent.getActivity(
-            context,
-            requestCode,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-    }
-
-    private fun buildExternalUrlPendingIntent(
-        context: Context,
-        url: String,
-        requestCode: Int
-    ): PendingIntent {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         return PendingIntent.getActivity(
             context,
