@@ -67,16 +67,28 @@ export default function AdminDashboard() {
   const fetchLocations = async () => {
     try {
       const snap = await getDocs(collection(db, 'locations'));
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const list: any[] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setLocations(list);
       const seen = new Set<string>();
-      const hasDup = list.some((item: any) => {
+      const hasDup = list.some(item => {
         const key = `${item.type || ''}::${String(item.name || '').toLowerCase().replace(/[\s-]+/g, '')}`;
         if (seen.has(key)) return true;
         seen.add(key);
         return false;
       });
-      if (hasDup) {
+      const schoolItems = list.filter(item => item.type === 'maktab');
+      let hasOverlap = false;
+      for (let i = 0; i < schoolItems.length && !hasOverlap; i++) {
+        for (let j = i + 1; j < schoolItems.length; j++) {
+          const dLat = Math.abs(Number(schoolItems[i].lat) - Number(schoolItems[j].lat));
+          const dLng = Math.abs(Number(schoolItems[i].lng) - Number(schoolItems[j].lng));
+          if (dLat < 0.0002 && dLng < 0.0002) {
+            hasOverlap = true;
+            break;
+          }
+        }
+      }
+      if (hasDup || hasOverlap) {
         setActiveTab(prev => (prev === 'users' ? 'audit' : prev));
       }
     } catch (e) {

@@ -203,12 +203,76 @@ export default function LocationAuditPanel({
       list.push({ key, targetName, sourceLabel, lat, lng, note });
     };
 
-    // +1 shift block (55 -> 56, 56 -> 57, 57 -> 58, 58 -> 59, 59 -> 60)
+    // +1 shift block (old 49 -> 50, 50 -> 51, 51 -> 52, 52 -> 53, 53 -> 54, 54 -> 55, 55 -> 56, 56 -> 57, 57 -> 58, 58 -> 59, 59 -> 60)
+    const s50 = findSchool(50);
+    const s51 = findSchool(51);
+    const s52 = findSchool(52);
+    const s53 = findSchool(53);
+    const s54 = findSchool(54);
     const s55 = findSchool(55);
     const s56 = findSchool(56);
     const s57 = findSchool(57);
     const s58 = findSchool(58);
     const s59 = findSchool(59);
+
+    if (s50 && distMeters(s50.lat, s50.lng, 39.713789, 67.387784) < 200) {
+      addIfNeeded(
+        'old49_to_50',
+        '50-maktab',
+        RECOVERED_SEED_COORDS.oldRow49.label,
+        RECOVERED_SEED_COORDS.oldRow49.lat,
+        RECOVERED_SEED_COORDS.oldRow49.lng,
+        "Nebo'sa MFY hududi (eski 49-qator, +1 siljish)"
+      );
+      addIfNeeded(
+        '50_to_51',
+        '51-maktab',
+        'Hozirgi 50-maktab koordinatasi',
+        s50.lat,
+        s50.lng,
+        '+1 siljish (50 → 51)'
+      );
+    }
+    if (s51 && distMeters(s51.lat, s51.lng, 39.694999, 67.315246) < 200) {
+      addIfNeeded(
+        '51_to_52',
+        '52-maktab',
+        'Hozirgi 51-maktab koordinatasi',
+        s51.lat,
+        s51.lng,
+        '+1 siljish (51 → 52)'
+      );
+    }
+    if (s52 && distMeters(s52.lat, s52.lng, 39.672770, 67.264766) < 200) {
+      addIfNeeded(
+        '52_to_53',
+        '53-maktab',
+        'Hozirgi 52-maktab koordinatasi',
+        s52.lat,
+        s52.lng,
+        'Siz tasdiqlagansiz: 52 asli 53-maktab (+1 siljish)'
+      );
+    }
+    if (s53 && distMeters(s53.lat, s53.lng, 39.692397, 67.240538) < 200) {
+      addIfNeeded(
+        '53_to_54',
+        '54-maktab',
+        'Hozirgi 53-maktab koordinatasi',
+        s53.lat,
+        s53.lng,
+        'Siz tasdiqlagansiz: 53 asli 54-maktab (+1 siljish)'
+      );
+    }
+    if (s54 && distMeters(s54.lat, s54.lng, 39.766777, 67.292149) < 200) {
+      addIfNeeded(
+        '54_to_55',
+        '55-maktab',
+        'Hozirgi 54-maktab koordinatasi',
+        s54.lat,
+        s54.lng,
+        'Siz tasdiqlagansiz: 54 asli 55-maktab (56 ustidan ajratiladi)'
+      );
+    }
 
     if (s55 && distMeters(s55.lat, s55.lng, 39.636811, 67.233552) < 200) {
       addIfNeeded(
@@ -271,6 +335,14 @@ export default function LocationAuditPanel({
     const s70 = findSchool(70);
 
     if (s63 && distMeters(s63.lat, s63.lng, 39.626708, 67.352043) < 200) {
+      addIfNeeded(
+        'old62_to_63',
+        '63-maktab',
+        RECOVERED_SEED_COORDS.oldRow62.label,
+        RECOVERED_SEED_COORDS.oldRow62.lat,
+        RECOVERED_SEED_COORDS.oldRow62.lng,
+        'Eski 62-qator (65-maktab ustidan ajratiladi)'
+      );
       addIfNeeded(
         '63_to_65',
         '65-maktab',
@@ -574,9 +646,10 @@ export default function LocationAuditPanel({
         }
       }
 
-      onSuccess(
-        `Hammasi bajarildi: ${deletedCount} ta ortiqcha dublikat o'chirildi va ${updatedCount} ta maktab joylashuvi to'g'rilandi!`
-      );
+      const summaryParts: string[] = [];
+      if (deletedCount > 0) summaryParts.push(`${deletedCount} ta ortiqcha dublikat o'chirildi`);
+      if (updatedCount > 0) summaryParts.push(`${updatedCount} ta maktab joylashuvi to'g'rilandi`);
+      onSuccess(`Hammasi bajarildi: ${summaryParts.join(' va ')}!`);
       await onRefresh();
     } catch (err: any) {
       onError(err?.message || "Tuzatishda xatolik yuz berdi");
@@ -584,6 +657,14 @@ export default function LocationAuditPanel({
       setBusyAction(null);
     }
   };
+
+  const affectedSchoolNumsLabel = useMemo(() => {
+    const nums = shiftProposals
+      .map(p => extractSchoolNumber(p.targetName))
+      .filter(n => n < 9999)
+      .sort((a, b) => a - b);
+    return nums.join(', ');
+  }, [shiftProposals]);
 
   return (
     <div className="space-y-6">
@@ -601,7 +682,7 @@ export default function LocationAuditPanel({
                   : ''}
                 {totalExtraDuplicates > 0 && shiftProposals.length > 0 ? ' · ' : ''}
                 {shiftProposals.length > 0
-                  ? `${shiftProposals.filter(p => !uncheckedShifts[p.key]).length} ta siljigan maktab (56–60 va 65–72) haqiqiy joyiga qo'yiladi`
+                  ? `${shiftProposals.filter(p => !uncheckedShifts[p.key]).length} ta siljigan maktab (${affectedSchoolNumsLabel}) haqiqiy joyiga qo'yiladi`
                   : ''}
               </p>
             </div>
@@ -666,7 +747,7 @@ export default function LocationAuditPanel({
               </div>
               <div>
                 <h3 className="font-extrabold text-amber-950 text-base">
-                  Aniqlangan +1 va +2 raqam siljishlari (56–60 va 65–72-maktablar)
+                  Aniqlangan raqam siljishlari ({affectedSchoolNumsLabel}-maktablar)
                 </h3>
                 <p className="text-xs text-amber-800 mt-1">
                   47 va 64-maktablar yo'qligi sababli koordinatalar +1 va +2 ga siljib qolgan. Quyidagi barcha qatorlar MFY va sizning tekshiruvingiz bo'yicha aniqlandi:

@@ -195,16 +195,16 @@
     "id": "ExqHgx6BSUpKZV7OHRN2",
     "name": "50-maktab",
     "type": "maktab",
-    "lat": 39.713789,
-    "lng": 67.387784,
+    "lat": 39.667885,
+    "lng": 67.357414,
     "mahalla": "Nebo'sa MFY"
   },
   {
     "id": "yPAFIBqwqE261MK1FjrW",
     "name": "55-maktab",
     "type": "maktab",
-    "lat": 39.636811,
-    "lng": 67.233552,
+    "lat": 39.766777,
+    "lng": 67.292149,
     "mahalla": "Navbahor MFY"
   },
   {
@@ -339,8 +339,8 @@
     "id": "pPSUlCfO1PBRdadtQvGk",
     "name": "54-maktab",
     "type": "maktab",
-    "lat": 39.766777,
-    "lng": 67.292149,
+    "lat": 39.692397,
+    "lng": 67.240538,
     "mahalla": "Zarafshon MFY"
   },
   {
@@ -579,8 +579,8 @@
     "id": "T8bguGV2xvuEaf6v3YGq",
     "name": "63-maktab",
     "type": "maktab",
-    "lat": 39.626708,
-    "lng": 67.352043,
+    "lat": 39.702037,
+    "lng": 67.390612,
     "mahalla": "Bulungur ariq MFY"
   },
   {
@@ -707,8 +707,8 @@
     "id": "WwB50mKNSMPJpRRxZObY",
     "name": "53-maktab",
     "type": "maktab",
-    "lat": 39.692397,
-    "lng": 67.240538,
+    "lat": 39.67277,
+    "lng": 67.264766,
     "mahalla": "Qo'ng'irot MFY"
   },
   {
@@ -723,8 +723,8 @@
     "id": "Xv8TFljcIQAobuFYV0el",
     "name": "52-maktab",
     "type": "maktab",
-    "lat": 39.67277,
-    "lng": 67.264766,
+    "lat": 39.694999,
+    "lng": 67.315246,
     "mahalla": "Gulzor MFY"
   },
   {
@@ -779,8 +779,8 @@
     "id": "f1WKhFfhLTXMwItwA7Po",
     "name": "51-maktab",
     "type": "maktab",
-    "lat": 39.694999,
-    "lng": 67.315246,
+    "lat": 39.713789,
+    "lng": 67.387784,
     "mahalla": "Bulung'urariq MFY"
   },
   {
@@ -851,8 +851,8 @@
     "id": "wA2uBBQxJeghG1XKYMpQ",
     "name": "20-bog'cha",
     "type": "dmtt",
-    "lat": 39.69245148,
-    "lng": 67.24021149,
+    "lat": 39.691697,
+    "lng": 67.237648,
     "mahalla": ""
   },
   {
