@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../lib/firebase';
-import { useNavigate } from 'react-router-dom';
-import { MapIcon, Lock, Mail, ChevronRight } from 'lucide-react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { MapIcon, Lock, Mail, ChevronRight, ArrowLeft } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -10,16 +10,27 @@ export default function Login() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const redirectTo = (location.state as { from?: string } | null)?.from || '/';
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      navigate('/');
+      await signInWithEmailAndPassword(auth, email.trim(), password);
+      navigate(redirectTo, { replace: true });
     } catch (err: any) {
-      setError(err.message || 'Login qilishda xatolik yuz berdi');
+      const code = err?.code || '';
+      if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
+        setError("Email yoki parol noto'g'ri. Qayta tekshirib kiriting.");
+      } else if (code === 'auth/too-many-requests') {
+        setError("Juda ko'p urinish bo'ldi. Biroz kutib qayta urinib ko'ring.");
+      } else if (code === 'auth/network-request-failed') {
+        setError("Internet ulanishida xatolik. Tarmoqni tekshiring.");
+      } else {
+        setError(err.message || 'Tizimga kirishda xatolik yuz berdi');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -90,9 +101,18 @@ export default function Login() {
             </button>
           </form>
         </div>
-        <p className="text-center text-slate-400 text-xs mt-6">
-          Hali hisobingiz yo'q bo'lsa, adminga murojaat qiling
-        </p>
+        <div className="text-center mt-6 space-y-2">
+          <p className="text-slate-400 text-xs">
+            Hali hisobingiz yo'q bo'lsa, adminga murojaat qiling
+          </p>
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-blue-600 transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Xaritaga qaytish
+          </Link>
+        </div>
       </div>
     </div>
   );

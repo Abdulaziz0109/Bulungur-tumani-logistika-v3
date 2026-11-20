@@ -26,6 +26,16 @@
             </intent-filter>
         </activity>
 
+        <!-- Instant native floating search popup directly over home screen (no WebView) -->
+        <activity
+            android:name=".QuickSearchActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:theme="@style/Theme.BulungurMMTB.QuickSearch"
+            android:windowSoftInputMode="stateAlwaysVisible|adjustResize" />
+
         <!-- Native Android Home Screen Widget (appears in Samsung One UI Vidjetlar tray) -->
         <receiver
             android:name=".MmtbWidgetProvider"

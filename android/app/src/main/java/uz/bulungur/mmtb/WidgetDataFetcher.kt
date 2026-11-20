@@ -74,6 +74,18 @@ object WidgetDataFetcher {
         return true
     }
 
+    /**
+     * Instant local-only snapshot (<5ms) using cached Firestore data or bundled 109-facility seed.
+     * Never blocks on network — ideal for the floating widget quick search popup.
+     */
+    fun loadCachedSnapshotFast(context: Context): WidgetSnapshot {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val cachedJson = prefs.getString(KEY_CACHE_JSON, null)
+        val cachedList = parseCachedJson(cachedJson)
+        val rawList = if (cachedList.isNotEmpty()) cachedList else loadBundledSeedLocations(context)
+        return buildSnapshot(context, rawList)
+    }
+
     fun loadSnapshot(context: Context, forceNetwork: Boolean): WidgetSnapshot {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val lastFetch = prefs.getLong(KEY_CACHE_TIME, 0L)
@@ -100,6 +112,10 @@ object WidgetDataFetcher {
             rawList = loadBundledSeedLocations(context)
         }
 
+        return buildSnapshot(context, rawList)
+    }
+
+    private fun buildSnapshot(context: Context, rawList: List<MmtbLocation>): WidgetSnapshot {
         val (refLat, refLng, hasGps) = resolveBestLocation(context)
         val withDistance = rawList.map { loc ->
             loc.copy(distKm = haversineKm(refLat, refLng, loc.lat, loc.lng))

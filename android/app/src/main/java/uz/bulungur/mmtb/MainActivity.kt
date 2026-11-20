@@ -6,9 +6,12 @@ import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
+import android.view.Gravity
+import android.view.View
 import android.webkit.CookieManager
 import android.webkit.GeolocationPermissions
 import android.webkit.JavascriptInterface
@@ -18,6 +21,10 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
@@ -33,6 +40,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var webView: WebView
+    private lateinit var loadingOverlay: LinearLayout
+    private lateinit var progressBar: ProgressBar
+    private var currentLoadedPath: String? = null
     private var pendingGeoOrigin: String? = null
     private var pendingGeoCallback: GeolocationPermissions.Callback? = null
 
@@ -66,8 +76,91 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        webView = WebView(this)
-        setContentView(webView)
+        val root = FrameLayout(this).apply {
+            setBackgroundColor(Color.parseColor("#0F172A"))
+        }
+
+        webView = WebView(this).apply {
+            setBackgroundColor(Color.parseColor("#F8FAFC"))
+        }
+        root.addView(
+            webView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        // Slim top progress bar during navigation
+        progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = 15
+            isIndeterminate = false
+        }
+        root.addView(
+            progressBar,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                8,
+                Gravity.TOP
+            )
+        )
+
+        // Instant dark splash overlay while the map bundle initializes on slow LTE
+        loadingOverlay = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#0F172A"))
+            setPadding(48, 48, 48, 48)
+
+            addView(
+                TextView(this@MainActivity).apply {
+                    text = "Bulung'ur MMTB"
+                    setTextColor(Color.WHITE)
+                    textSize = 22f
+                    setTypeface(null, android.graphics.Typeface.BOLD)
+                    gravity = Gravity.CENTER
+                }
+            )
+            addView(
+                TextView(this@MainActivity).apply {
+                    text = "Xarita yuklanmoqda..."
+                    setTextColor(Color.parseColor("#94A3B8"))
+                    textSize = 13f
+                    gravity = Gravity.CENTER
+                    setPadding(0, 12, 0, 28)
+                }
+            )
+            addView(ProgressBar(this@MainActivity))
+            addView(
+                TextView(this@MainActivity).apply {
+                    text = "🔍 Oflayn tezkor qidiruv"
+                    setTextColor(Color.WHITE)
+                    textSize = 13f
+                    setTypeface(null, android.graphics.Typeface.BOLD)
+                    setBackgroundResource(R.drawable.widget_pill_active)
+                    setPadding(36, 20, 36, 20)
+                    val lp = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    lp.topMargin = 40
+                    layoutParams = lp
+                    setOnClickListener {
+                        startActivity(Intent(this@MainActivity, QuickSearchActivity::class.java))
+                    }
+                }
+            )
+        }
+        root.addView(
+            loadingOverlay,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+
+        setContentView(root)
 
         val settings = webView.settings
         settings.javaScriptEnabled = true
@@ -85,6 +178,17 @@ class MainActivity : AppCompatActivity() {
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
 
         webView.webViewClient = object : WebViewClient() {
+            override fun onPageCommitVisible(view: WebView?, url: String?) {
+                super.onPageCommitVisible(view, url)
+                hideLoadingOverlay()
+            }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                hideLoadingOverlay()
+                progressBar.visibility = View.GONE
+            }
+
             override fun shouldOverrideUrlLoading(
                 view: WebView?,
                 request: WebResourceRequest?
@@ -120,6 +224,18 @@ class MainActivity : AppCompatActivity() {
         }
 
         webView.webChromeClient = object : WebChromeClient() {
+            override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                progressBar.progress = newProgress
+                if (newProgress >= 65) {
+                    hideLoadingOverlay()
+                }
+                if (newProgress >= 100) {
+                    progressBar.visibility = View.GONE
+                } else {
+                    progressBar.visibility = View.VISIBLE
+                }
+            }
+
             override fun onGeolocationPermissionsShowPrompt(
                 origin: String?,
                 callback: GeolocationPermissions.Callback?
@@ -171,6 +287,12 @@ class MainActivity : AppCompatActivity() {
         loadStartUrl(intent)
     }
 
+    private fun hideLoadingOverlay() {
+        if (loadingOverlay.visibility == View.VISIBLE) {
+            loadingOverlay.visibility = View.GONE
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -180,6 +302,10 @@ class MainActivity : AppCompatActivity() {
     private fun loadStartUrl(intent: Intent?) {
         val path = intent?.getStringExtra(EXTRA_START_PATH) ?: "/"
         val cleanPath = if (path.startsWith("/")) path else "/$path"
+        if (cleanPath == currentLoadedPath && !webView.url.isNullOrBlank()) {
+            return
+        }
+        currentLoadedPath = cleanPath
         webView.loadUrl("$BASE_URL$cleanPath")
     }
 

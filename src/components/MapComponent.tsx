@@ -2376,7 +2376,7 @@ export default function MapComponent() {
                 </h1>
                 <div className="flex items-center text-[9px] md:text-[10px] text-slate-500 font-bold uppercase tracking-wider">
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1 shrink-0"></span>
-                  <span className="truncate">{currentUser ? 'Iqtisodchi' : 'Mehmon'}</span>
+                  <span className="truncate">{role === 'admin' ? 'Admin' : currentUser ? 'Xodim' : 'Mehmon'}</span>
                 </div>
               </div>
             </div>

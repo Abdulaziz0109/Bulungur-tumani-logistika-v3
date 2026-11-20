@@ -156,10 +156,10 @@ class MmtbWidgetProvider : AppWidgetProvider() {
                 buildOpenAppPendingIntent(context, "/", 105)
             )
 
-            // Quick Search bar -> opens /widget search directly
+            // Quick Search bar -> opens instant native floating search overlay (0ms, no WebView)
             views.setOnClickPendingIntent(
                 R.id.btn_quick_search,
-                buildOpenAppPendingIntent(context, "/widget", 106)
+                buildQuickSearchPendingIntent(context, 106)
             )
 
             // Populate 4 Meteum-style facility rows
@@ -214,6 +214,21 @@ class MmtbWidgetProvider : AppWidgetProvider() {
             putExtra(EXTRA_FILTER, filter)
         }
         return PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    private fun buildQuickSearchPendingIntent(
+        context: Context,
+        requestCode: Int
+    ): PendingIntent {
+        val intent = Intent(context, QuickSearchActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION
+        }
+        return PendingIntent.getActivity(
             context,
             requestCode,
             intent,
