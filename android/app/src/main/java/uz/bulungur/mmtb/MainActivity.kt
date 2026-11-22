@@ -279,12 +279,25 @@ class MainActivity : AppCompatActivity() {
 
         if (!hasLocationPermission()) {
             requestLocationPermission()
+        } else {
+            MmtbWidgetProvider.scheduleSmartAutoUpdates(this)
         }
 
         // Automatically check GitHub Releases for newer APK versions on launch
         AppUpdater.checkForUpdate(this, silentIfUpToDate = true)
 
         loadStartUrl(intent)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Silently refresh widget with the latest local GPS fix when returning to Home screen
+        if (hasLocationPermission()) {
+            val tickIntent = Intent(this, MmtbWidgetProvider::class.java).apply {
+                action = MmtbWidgetProvider.ACTION_PASSIVE_LOCATION
+            }
+            sendBroadcast(tickIntent)
+        }
     }
 
     private fun hideLoadingOverlay() {
@@ -342,6 +355,10 @@ class MainActivity : AppCompatActivity() {
             pendingGeoCallback?.invoke(pendingGeoOrigin, granted, false)
             pendingGeoCallback = null
             pendingGeoOrigin = null
+
+            if (granted) {
+                MmtbWidgetProvider.scheduleSmartAutoUpdates(this)
+            }
 
             val refreshIntent = Intent(this, MmtbWidgetProvider::class.java).apply {
                 action = MmtbWidgetProvider.ACTION_REFRESH

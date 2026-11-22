@@ -1,14 +1,20 @@
 package uz.bulungur.mmtb
 
+import android.annotation.SuppressLint
+import android.app.AlarmManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.location.Location
+import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.os.SystemClock
 import android.widget.RemoteViews
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -18,9 +24,118 @@ class MmtbWidgetProvider : AppWidgetProvider() {
     companion object {
         const val ACTION_REFRESH = "uz.bulungur.mmtb.ACTION_REFRESH"
         const val ACTION_SET_FILTER = "uz.bulungur.mmtb.ACTION_SET_FILTER"
+        const val ACTION_AUTO_TICK = "uz.bulungur.mmtb.ACTION_AUTO_TICK"
+        const val ACTION_PASSIVE_LOCATION = "uz.bulungur.mmtb.ACTION_PASSIVE_LOCATION"
         const val EXTRA_FILTER = "extra_filter"
 
+        private const val REQUEST_CODE_AUTO_TICK = 401
+        private const val REQUEST_CODE_PASSIVE_LOC = 402
+
         private val executor = Executors.newSingleThreadExecutor()
+
+        /**
+         * Registers two ultra-low-battery auto-update hooks:
+         * 1. PASSIVE_PROVIDER location listener (0% extra GPS drain — piggybacks on system/Yandex/Google fixes, >=200m & >=2min)
+         * 2. Non-wakeup ELAPSED_REALTIME inexact alarm (~15 min, NEVER wakes a sleeping phone, skips when screen is off)
+         */
+        @SuppressLint("MissingPermission")
+        fun scheduleSmartAutoUpdates(context: Context) {
+            val appCtx = context.applicationContext
+            val appWidgetManager = AppWidgetManager.getInstance(appCtx)
+            val ids = appWidgetManager.getAppWidgetIds(
+                ComponentName(appCtx, MmtbWidgetProvider::class.java)
+            )
+            if (ids.isEmpty()) return
+
+            // 1. Non-wakeup inexact periodic check (never wakes phone from Doze/sleep)
+            try {
+                val alarmManager = appCtx.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+                val tickPending = buildAutoTickPendingIntent(appCtx)
+                alarmManager?.setInexactRepeating(
+                    AlarmManager.ELAPSED_REALTIME,
+                    SystemClock.elapsedRealtime() + AlarmManager.INTERVAL_FIFTEEN_MINUTES,
+                    AlarmManager.INTERVAL_FIFTEEN_MINUTES,
+                    tickPending
+                )
+            } catch (_: Exception) {
+                // Ignore if alarm scheduling is restricted by OEM battery saver
+            }
+
+            // 2. Zero-drain passive location listener (piggybacks on existing location updates)
+            if (WidgetDataFetcher.hasLocationPermission(appCtx)) {
+                try {
+                    val lm = appCtx.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+                    val passivePending = buildPassiveLocationPendingIntent(appCtx)
+                    lm?.removeUpdates(passivePending)
+                    lm?.requestLocationUpdates(
+                        LocationManager.PASSIVE_PROVIDER,
+                        2 * 60 * 1000L, // at most every 2 minutes
+                        200f,           // only when moved >= 200 meters
+                        passivePending
+                    )
+                } catch (_: SecurityException) {
+                    // Safely ignore if background location is not yet granted
+                } catch (_: Exception) {
+                    // Ignore OEM quirks
+                }
+            }
+        }
+
+        fun cancelSmartAutoUpdates(context: Context) {
+            val appCtx = context.applicationContext
+            try {
+                val alarmManager = appCtx.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+                alarmManager?.cancel(buildAutoTickPendingIntent(appCtx))
+            } catch (_: Exception) {
+                // Ignore
+            }
+            try {
+                val lm = appCtx.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+                lm?.removeUpdates(buildPassiveLocationPendingIntent(appCtx))
+            } catch (_: Exception) {
+                // Ignore
+            }
+        }
+
+        private fun buildAutoTickPendingIntent(context: Context): PendingIntent {
+            val intent = Intent(context, MmtbWidgetProvider::class.java).apply {
+                action = ACTION_AUTO_TICK
+            }
+            return PendingIntent.getBroadcast(
+                context,
+                REQUEST_CODE_AUTO_TICK,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
+
+        private fun buildPassiveLocationPendingIntent(context: Context): PendingIntent {
+            // Explicit Intent + FLAG_MUTABLE so Android fills KEY_LOCATION_CHANGED safely on Android 14
+            val intent = Intent(context, MmtbWidgetProvider::class.java).apply {
+                action = ACTION_PASSIVE_LOCATION
+            }
+            val mutabilityFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_MUTABLE
+            } else {
+                0
+            }
+            return PendingIntent.getBroadcast(
+                context,
+                REQUEST_CODE_PASSIVE_LOC,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or mutabilityFlag
+            )
+        }
+    }
+
+    override fun onEnabled(context: Context) {
+        super.onEnabled(context)
+        scheduleSmartAutoUpdates(context)
+    }
+
+    override fun onDisabled(context: Context) {
+        super.onDisabled(context)
+        cancelSmartAutoUpdates(context)
     }
 
     override fun onUpdate(
@@ -28,10 +143,18 @@ class MmtbWidgetProvider : AppWidgetProvider() {
         appWidgetManager: AppWidgetManager,
         appWidgetIds: IntArray
     ) {
+        scheduleSmartAutoUpdates(context)
         val pendingResult = goAsync()
         executor.execute {
             try {
-                updateAllWidgets(context, appWidgetManager, appWidgetIds, forceNetwork = true)
+                updateAllWidgets(
+                    context = context,
+                    appWidgetManager = appWidgetManager,
+                    appWidgetIds = appWidgetIds,
+                    forceNetwork = false,
+                    requestFreshGps = true,
+                    skipIfStationary = false
+                )
             } finally {
                 pendingResult.finish()
             }
@@ -48,7 +171,14 @@ class MmtbWidgetProvider : AppWidgetProvider() {
         val pendingResult = goAsync()
         executor.execute {
             try {
-                updateAllWidgets(context, appWidgetManager, intArrayOf(appWidgetId), forceNetwork = false)
+                updateAllWidgets(
+                    context = context,
+                    appWidgetManager = appWidgetManager,
+                    appWidgetIds = intArrayOf(appWidgetId),
+                    forceNetwork = false,
+                    requestFreshGps = false,
+                    skipIfStationary = false
+                )
             } finally {
                 pendingResult.finish()
             }
@@ -58,21 +188,77 @@ class MmtbWidgetProvider : AppWidgetProvider() {
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         val action = intent.action ?: return
-        if (action == ACTION_REFRESH || action == ACTION_SET_FILTER) {
-            val forceNetwork = action == ACTION_REFRESH
-            if (action == ACTION_SET_FILTER) {
-                val filter = intent.getStringExtra(EXTRA_FILTER) ?: "all"
-                WidgetDataFetcher.setSavedFilter(context, filter)
-            }
-            val appWidgetManager = AppWidgetManager.getInstance(context)
-            val ids = appWidgetManager.getAppWidgetIds(
-                ComponentName(context, MmtbWidgetProvider::class.java)
-            )
-            if (ids.isNotEmpty()) {
+        val appWidgetManager = AppWidgetManager.getInstance(context)
+        val ids = appWidgetManager.getAppWidgetIds(
+            ComponentName(context, MmtbWidgetProvider::class.java)
+        )
+        if (ids.isEmpty()) return
+
+        when (action) {
+            ACTION_REFRESH, ACTION_SET_FILTER -> {
+                val isManualRefresh = action == ACTION_REFRESH
+                if (action == ACTION_SET_FILTER) {
+                    val filter = intent.getStringExtra(EXTRA_FILTER) ?: "all"
+                    WidgetDataFetcher.setSavedFilter(context, filter)
+                }
+                scheduleSmartAutoUpdates(context)
                 val pendingResult = goAsync()
                 executor.execute {
                     try {
-                        updateAllWidgets(context, appWidgetManager, ids, forceNetwork = forceNetwork)
+                        updateAllWidgets(
+                            context = context,
+                            appWidgetManager = appWidgetManager,
+                            appWidgetIds = ids,
+                            forceNetwork = isManualRefresh,
+                            requestFreshGps = isManualRefresh,
+                            skipIfStationary = false
+                        )
+                    } finally {
+                        pendingResult.finish()
+                    }
+                }
+            }
+
+            ACTION_PASSIVE_LOCATION -> {
+                val loc = extractLocationExtra(intent)
+                if (loc != null) {
+                    WidgetDataFetcher.saveLastKnownFix(context, loc.latitude, loc.longitude, loc.time)
+                }
+                val pendingResult = goAsync()
+                executor.execute {
+                    try {
+                        // Local-only update (<5ms, zero GPS/network cost), skips if moved < 150m
+                        updateAllWidgets(
+                            context = context,
+                            appWidgetManager = appWidgetManager,
+                            appWidgetIds = ids,
+                            forceNetwork = false,
+                            requestFreshGps = false,
+                            skipIfStationary = true
+                        )
+                    } finally {
+                        pendingResult.finish()
+                    }
+                }
+            }
+
+            ACTION_AUTO_TICK -> {
+                // Never waste battery while screen is off / phone is in pocket
+                val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+                if (pm != null && !pm.isInteractive) {
+                    return
+                }
+                val pendingResult = goAsync()
+                executor.execute {
+                    try {
+                        updateAllWidgets(
+                            context = context,
+                            appWidgetManager = appWidgetManager,
+                            appWidgetIds = ids,
+                            forceNetwork = false,
+                            requestFreshGps = true,
+                            skipIfStationary = true
+                        )
                     } finally {
                         pendingResult.finish()
                     }
@@ -81,14 +267,43 @@ class MmtbWidgetProvider : AppWidgetProvider() {
         }
     }
 
+    @Suppress("DEPRECATION")
+    private fun extractLocationExtra(intent: Intent): Location? {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(LocationManager.KEY_LOCATION_CHANGED, Location::class.java)
+            } else {
+                intent.getParcelableExtra(LocationManager.KEY_LOCATION_CHANGED)
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     private fun updateAllWidgets(
         context: Context,
         appWidgetManager: AppWidgetManager,
         appWidgetIds: IntArray,
-        forceNetwork: Boolean
+        forceNetwork: Boolean,
+        requestFreshGps: Boolean,
+        skipIfStationary: Boolean
     ) {
-        val snapshot = WidgetDataFetcher.loadSnapshot(context, forceNetwork)
         val activeFilter = WidgetDataFetcher.getSavedFilter(context)
+        val snapshot = WidgetDataFetcher.loadSnapshot(
+            context = context,
+            forceNetwork = forceNetwork,
+            requestFreshGps = requestFreshGps
+        )
+
+        if (skipIfStationary && !WidgetDataFetcher.shouldRedrawForLocation(
+                context = context,
+                lat = snapshot.refLat,
+                lng = snapshot.refLng,
+                filter = activeFilter
+            )
+        ) {
+            return
+        }
 
         val filtered = snapshot.locations.filter { loc ->
             when (activeFilter) {
@@ -195,6 +410,8 @@ class MmtbWidgetProvider : AppWidgetProvider() {
             appWidgetManager.updateAppWidget(appWidgetId, views)
             appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.lv_widget_locations)
         }
+
+        WidgetDataFetcher.recordRenderedState(context, snapshot.refLat, snapshot.refLng, activeFilter)
     }
 
     private fun buildFilterPendingIntent(
@@ -267,3 +484,4 @@ class MmtbWidgetProvider : AppWidgetProvider() {
         )
     }
 }
+

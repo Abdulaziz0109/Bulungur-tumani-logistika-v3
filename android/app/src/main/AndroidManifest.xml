@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
     <application
         android:allowBackup="true"
@@ -45,6 +46,8 @@
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="uz.bulungur.mmtb.ACTION_REFRESH" />
                 <action android:name="uz.bulungur.mmtb.ACTION_SET_FILTER" />
+                <action android:name="uz.bulungur.mmtb.ACTION_AUTO_TICK" />
+                <action android:name="uz.bulungur.mmtb.ACTION_PASSIVE_LOCATION" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
