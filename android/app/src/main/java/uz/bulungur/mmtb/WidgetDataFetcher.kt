@@ -56,6 +56,8 @@ object WidgetDataFetcher {
     private const val KEY_LAST_FIX_LAT = "last_fix_lat"
     private const val KEY_LAST_FIX_LNG = "last_fix_lng"
     private const val KEY_LAST_FIX_TIME = "last_fix_time"
+    private const val KEY_LAST_FIX_BEARING = "last_fix_bearing"
+    private const val KEY_LAST_FIX_SPEED = "last_fix_speed"
     private const val KEY_RENDERED_LAT = "rendered_lat"
     private const val KEY_RENDERED_LNG = "rendered_lng"
     private const val KEY_RENDERED_TIME = "rendered_time"
@@ -63,9 +65,12 @@ object WidgetDataFetcher {
     private const val KEY_LIVE_GPS = "live_gps_enabled"
     private const val KEY_MAP_ZOOM_OFFSET = "map_zoom_offset"
     private const val KEY_MAP_PROVIDER = "widget_map_provider"
+    private const val KEY_WIDGET_TAB = "widget_active_tab"
 
     const val MAP_PROVIDER_GOOGLE = "google"
     const val MAP_PROVIDER_YANDEX = "yandex"
+    const val WIDGET_TAB_MAP = "map"
+    const val WIDGET_TAB_LIST = "list"
 
     private const val FIRESTORE_RUN_QUERY_URL =
         "https://firestore.googleapis.com/v1/projects/aerial-tide-389707/databases/ai-studio-eab0bc31-feff-4322-a7ef-dc4ebf4115db/documents:runQuery"
@@ -130,16 +135,53 @@ object WidgetDataFetcher {
             .apply()
     }
 
-    /**
-     * Stores a fresh location received from PASSIVE_PROVIDER or an active fix.
-     */
-    fun saveLastKnownFix(context: Context, lat: Double, lng: Double, timestampMs: Long = System.currentTimeMillis()) {
+    fun getWidgetTab(context: Context): String {
+        val raw = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_WIDGET_TAB, WIDGET_TAB_MAP)
+        return if (raw == WIDGET_TAB_LIST) WIDGET_TAB_LIST else WIDGET_TAB_MAP
+    }
+
+    fun setWidgetTab(context: Context, tab: String) {
+        val normalized = if (tab == WIDGET_TAB_LIST) WIDGET_TAB_LIST else WIDGET_TAB_MAP
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_WIDGET_TAB, normalized)
+            .apply()
+    }
+
+    /**
+     * Stores a fresh location + optional movement bearing/speed received from GPS or PASSIVE_PROVIDER.
+     */
+    fun saveLastKnownFix(
+        context: Context,
+        lat: Double,
+        lng: Double,
+        timestampMs: Long = System.currentTimeMillis(),
+        bearingDeg: Float? = null,
+        speedMps: Float? = null
+    ) {
+        val editor = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_LAST_FIX_LAT, lat.toString())
             .putString(KEY_LAST_FIX_LNG, lng.toString())
             .putLong(KEY_LAST_FIX_TIME, timestampMs)
-            .apply()
+        if (bearingDeg != null && !bearingDeg.isNaN()) {
+            editor.putFloat(KEY_LAST_FIX_BEARING, ((bearingDeg % 360f) + 360f) % 360f)
+        }
+        if (speedMps != null && !speedMps.isNaN()) {
+            editor.putFloat(KEY_LAST_FIX_SPEED, speedMps)
+        }
+        editor.apply()
+    }
+
+    fun getLastKnownBearingIfMoving(context: Context): Float? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val time = prefs.getLong(KEY_LAST_FIX_TIME, 0L)
+        val speed = prefs.getFloat(KEY_LAST_FIX_SPEED, 0f)
+        if (!prefs.contains(KEY_LAST_FIX_BEARING)) return null
+        if (System.currentTimeMillis() - time > 45_000L) return null
+        if (speed < 1.1f) return null
+        return prefs.getFloat(KEY_LAST_FIX_BEARING, 0f)
     }
 
     /**

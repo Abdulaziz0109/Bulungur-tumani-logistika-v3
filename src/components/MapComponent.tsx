@@ -285,23 +285,6 @@ export default function MapComponent() {
       return 'google';
     }
   });
-  const [widgetMapProvider, setWidgetMapProvider] = useState<'google' | 'yandex'>(() => {
-    try {
-      const bridge = (window as unknown as { AndroidBridge?: { getWidgetMapProvider?: () => string } }).AndroidBridge;
-      return bridge?.getWidgetMapProvider?.() === 'yandex' ? 'yandex' : 'google';
-    } catch {
-      return 'google';
-    }
-  });
-  const handleSelectWidgetMapProvider = (provider: 'google' | 'yandex') => {
-    setWidgetMapProvider(provider);
-    try {
-      const bridge = (window as unknown as { AndroidBridge?: { setWidgetMapProvider?: (p: string) => void } }).AndroidBridge;
-      bridge?.setWidgetMapProvider?.(provider);
-    } catch {
-      // Ignore outside Android WebView
-    }
-  };
   const [routeSteps, setRouteSteps] = useState<any[]>(() => {
     try {
       const cached = localStorage.getItem('mmtb_last_route_steps');
@@ -3355,27 +3338,6 @@ export default function MapComponent() {
                          Yandex Maps
                       </button>
                    </div>
-                   {typeof (window as unknown as { AndroidBridge?: { setWidgetMapProvider?: (p: string) => void } }).AndroidBridge?.setWidgetMapProvider === 'function' && (
-                      <div className="mt-3 pt-3 border-t border-slate-100">
-                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
-                            Telefon Vidjeti Xaritasi
-                         </div>
-                         <div className="grid grid-cols-2 gap-2">
-                            <button
-                               onClick={() => handleSelectWidgetMapProvider('google')}
-                               className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all ${widgetMapProvider === 'google' ? 'bg-sky-50 border-sky-400 text-sky-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                            >
-                               Google Maps
-                            </button>
-                            <button
-                               onClick={() => handleSelectWidgetMapProvider('yandex')}
-                               className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all ${widgetMapProvider === 'yandex' ? 'bg-amber-50 border-amber-400 text-amber-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                            >
-                               Yandex Maps
-                            </button>
-                         </div>
-                      </div>
-                   )}
                 </div>
 
                 {/* Radius Analysis */}

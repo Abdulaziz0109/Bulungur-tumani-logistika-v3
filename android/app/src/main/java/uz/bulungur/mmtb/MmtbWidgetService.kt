@@ -63,6 +63,9 @@ class MmtbWidgetViewsFactory(
         val yandexUrl = WidgetDataFetcher.buildYandexUrl(loc, hasGps, refLat, refLng)
         val googleUrl = WidgetDataFetcher.buildGoogleUrl(loc)
 
+        val hudFillIn = Intent().apply {
+            putExtra(QuickSearchActivity.EXTRA_HUD_TARGET_ID, loc.id)
+        }
         val yandexFillIn = Intent().apply {
             putExtra(QuickSearchActivity.EXTRA_NAV_URL, yandexUrl)
         }
@@ -70,7 +73,7 @@ class MmtbWidgetViewsFactory(
             putExtra(QuickSearchActivity.EXTRA_NAV_URL, googleUrl)
         }
 
-        rv.setOnClickFillInIntent(R.id.tv_widget_item_name, yandexFillIn)
+        rv.setOnClickFillInIntent(R.id.tv_widget_item_name, hudFillIn)
         rv.setOnClickFillInIntent(R.id.btn_widget_item_yandex, yandexFillIn)
         rv.setOnClickFillInIntent(R.id.btn_widget_item_google, googleFillIn)
 

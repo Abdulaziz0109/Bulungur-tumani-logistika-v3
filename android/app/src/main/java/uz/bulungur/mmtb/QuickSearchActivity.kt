@@ -28,6 +28,7 @@ class QuickSearchActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_NAV_URL = "extra_nav_url"
+        const val EXTRA_HUD_TARGET_ID = "extra_hud_target_id"
     }
 
     private lateinit var etSearch: EditText
@@ -157,6 +158,17 @@ class QuickSearchActivity : AppCompatActivity() {
     }
 
     private fun handleDirectNavIntent(intent: Intent?): Boolean {
+        val hudTargetId = intent?.getStringExtra(EXTRA_HUD_TARGET_ID)
+        if (!hudTargetId.isNullOrBlank()) {
+            val hudIntent = Intent(this, FloatingMapActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION
+                putExtra(FloatingMapActivity.EXTRA_TARGET_ID, hudTargetId)
+            }
+            startActivity(hudIntent)
+            finish()
+            overridePendingTransition(0, 0)
+            return true
+        }
         val navUrl = intent?.getStringExtra(EXTRA_NAV_URL)
         if (!navUrl.isNullOrBlank()) {
             launchExternalUrl(navUrl)

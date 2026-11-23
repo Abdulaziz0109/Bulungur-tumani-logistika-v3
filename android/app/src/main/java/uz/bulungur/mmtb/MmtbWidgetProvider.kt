@@ -17,15 +17,14 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.widget.RemoteViews
 import androidx.core.content.ContextCompat
-import java.util.Locale
 import java.util.concurrent.Executors
-import kotlin.math.max
 
 class MmtbWidgetProvider : AppWidgetProvider() {
 
     companion object {
         const val ACTION_REFRESH = "uz.bulungur.mmtb.ACTION_REFRESH"
         const val ACTION_SET_FILTER = "uz.bulungur.mmtb.ACTION_SET_FILTER"
+        const val ACTION_SET_TAB = "uz.bulungur.mmtb.ACTION_SET_TAB"
         const val ACTION_AUTO_TICK = "uz.bulungur.mmtb.ACTION_AUTO_TICK"
         const val ACTION_PASSIVE_LOCATION = "uz.bulungur.mmtb.ACTION_PASSIVE_LOCATION"
         const val ACTION_TOGGLE_LIVE = "uz.bulungur.mmtb.ACTION_TOGGLE_LIVE"
@@ -34,11 +33,11 @@ class MmtbWidgetProvider : AppWidgetProvider() {
         const val ACTION_ZOOM_AUTO = "uz.bulungur.mmtb.ACTION_ZOOM_AUTO"
         const val ACTION_SET_MAP_PROVIDER = "uz.bulungur.mmtb.ACTION_SET_MAP_PROVIDER"
         const val EXTRA_FILTER = "extra_filter"
+        const val EXTRA_TAB = "extra_tab"
         const val EXTRA_MAP_PROVIDER = "extra_map_provider"
 
         private const val REQUEST_CODE_AUTO_TICK = 401
         private const val REQUEST_CODE_PASSIVE_LOC = 402
-        private const val HYBRID_HEIGHT_THRESHOLD_DP = 360
 
         private val executor = Executors.newSingleThreadExecutor()
 
@@ -55,7 +54,6 @@ class MmtbWidgetProvider : AppWidgetProvider() {
             )
             if (ids.isEmpty()) return
 
-            // 1. Non-wakeup inexact periodic check (never wakes phone from sleep)
             try {
                 val alarmManager = appCtx.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
                 val tickPending = buildAutoTickPendingIntent(appCtx)
@@ -69,7 +67,6 @@ class MmtbWidgetProvider : AppWidgetProvider() {
                 // Ignore OEM restrictions
             }
 
-            // 2. Zero-drain passive location listener
             if (WidgetDataFetcher.hasLocationPermission(appCtx)) {
                 try {
                     val lm = appCtx.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
@@ -105,10 +102,10 @@ class MmtbWidgetProvider : AppWidgetProvider() {
             }
             try {
                 appCtx.stopService(Intent(appCtx, LiveLocationService::class.java))
-                WidgetDataFetcher.setLiveGpsEnabled(appCtx, false)
             } catch (_: Exception) {
                 // Ignore
             }
+            WidgetDataFetcher.setLiveGpsEnabled(appCtx, false)
         }
 
         private fun buildAutoTickPendingIntent(context: Context): PendingIntent {
@@ -127,7 +124,7 @@ class MmtbWidgetProvider : AppWidgetProvider() {
             val intent = Intent(context, MmtbWidgetProvider::class.java).apply {
                 action = ACTION_PASSIVE_LOCATION
             }
-            val mutabilityFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val mutability = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 PendingIntent.FLAG_MUTABLE
             } else {
                 0
@@ -136,7 +133,7 @@ class MmtbWidgetProvider : AppWidgetProvider() {
                 context,
                 REQUEST_CODE_PASSIVE_LOC,
                 intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or mutabilityFlag
+                PendingIntent.FLAG_UPDATE_CURRENT or mutability
             )
         }
     }
@@ -213,7 +210,6 @@ class MmtbWidgetProvider : AppWidgetProvider() {
                 if (action == ACTION_SET_FILTER) {
                     val filter = intent.getStringExtra(EXTRA_FILTER) ?: "all"
                     WidgetDataFetcher.setSavedFilter(context, filter)
-                    // Reset manual zoom back to Auto-Zoom when switching category
                     WidgetDataFetcher.setMapZoomOffset(context, 0)
                 }
                 scheduleSmartAutoUpdates(context)
@@ -234,6 +230,26 @@ class MmtbWidgetProvider : AppWidgetProvider() {
                 }
             }
 
+            ACTION_SET_TAB -> {
+                val tab = intent.getStringExtra(EXTRA_TAB) ?: WidgetDataFetcher.WIDGET_TAB_MAP
+                WidgetDataFetcher.setWidgetTab(context, tab)
+                val pendingResult = goAsync()
+                executor.execute {
+                    try {
+                        updateAllWidgets(
+                            context = context,
+                            appWidgetManager = appWidgetManager,
+                            appWidgetIds = ids,
+                            forceNetwork = false,
+                            requestFreshGps = false,
+                            skipIfStationary = false
+                        )
+                    } finally {
+                        pendingResult.finish()
+                    }
+                }
+            }
+
             ACTION_TOGGLE_LIVE -> {
                 val currentlyOn = WidgetDataFetcher.isLiveGpsEnabled(context)
                 if (currentlyOn) {
@@ -245,7 +261,6 @@ class MmtbWidgetProvider : AppWidgetProvider() {
                     }
                 } else {
                     if (!WidgetDataFetcher.hasLocationPermission(context)) {
-                        // Ask permission via MainActivity
                         val permIntent = Intent(context, MainActivity::class.java).apply {
                             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                         }
@@ -328,7 +343,14 @@ class MmtbWidgetProvider : AppWidgetProvider() {
             ACTION_PASSIVE_LOCATION -> {
                 val loc = extractLocationExtra(intent)
                 if (loc != null) {
-                    WidgetDataFetcher.saveLastKnownFix(context, loc.latitude, loc.longitude, loc.time)
+                    WidgetDataFetcher.saveLastKnownFix(
+                        context = context,
+                        lat = loc.latitude,
+                        lng = loc.longitude,
+                        timestampMs = loc.time,
+                        bearingDeg = if (loc.hasBearing()) loc.bearing else null,
+                        speedMps = if (loc.hasSpeed()) loc.speed else null
+                    )
                 }
                 val pendingResult = goAsync()
                 executor.execute {
@@ -393,9 +415,10 @@ class MmtbWidgetProvider : AppWidgetProvider() {
         skipIfStationary: Boolean
     ) {
         val activeFilter = WidgetDataFetcher.getSavedFilter(context)
+        val activeTab = WidgetDataFetcher.getWidgetTab(context)
         val liveOn = WidgetDataFetcher.isLiveGpsEnabled(context)
         val zoomOffset = WidgetDataFetcher.getMapZoomOffset(context)
-        val mapProvider = WidgetDataFetcher.getMapProvider(context)
+        val isListTab = activeTab == WidgetDataFetcher.WIDGET_TAB_LIST
 
         val snapshot = WidgetDataFetcher.loadSnapshot(
             context = context,
@@ -403,7 +426,8 @@ class MmtbWidgetProvider : AppWidgetProvider() {
             requestFreshGps = requestFreshGps
         )
 
-        val moveThreshold = if (liveOn) 30.0 else 150.0
+        // Pure vector HUD renders in <8ms with 0 tile downloads, so live mode can refresh every 10m smoothly!
+        val moveThreshold = if (liveOn) 10.0 else 120.0
         if (skipIfStationary && !WidgetDataFetcher.shouldRedrawForLocation(
                 context = context,
                 lat = snapshot.refLat,
@@ -424,42 +448,40 @@ class MmtbWidgetProvider : AppWidgetProvider() {
         }
         val nearest = filtered.firstOrNull()
 
-        // Render live auto-zoomed road map bitmap once and reuse across all widget instances
-        val renderedMap = WidgetMapRenderer.renderWidgetMapBitmap(
-            context = context,
-            snapshot = snapshot,
-            nearest = nearest,
-            nearbyOthers = filtered,
-            zoomOffset = zoomOffset,
-            provider = mapProvider,
-            widthPx = 600,
-            heightPx = 310
-        )
-
-        val roadKm = if (nearest != null && renderedMap.routeResult.isRoadRoute && renderedMap.routeResult.distanceMeters > 0) {
-            renderedMap.routeResult.distanceMeters / 1000.0
-        } else {
-            nearest?.distKm ?: 0.0
-        }
-        val etaMin = if (nearest != null && renderedMap.routeResult.isRoadRoute && renderedMap.routeResult.durationSeconds > 0) {
-            max(1, (renderedMap.routeResult.durationSeconds / 60.0).toInt())
+        // Only render vector HUD bitmap when the Xarita tab is active (0 ms wasted when viewing Ro'yxat!)
+        val renderedHud = if (!isListTab) {
+            WidgetMapRenderer.renderWidgetSchematicBitmap(
+                context = context,
+                snapshot = snapshot,
+                nearest = nearest,
+                nearbyOthers = filtered,
+                zoomOffset = zoomOffset,
+                widthPx = 600,
+                heightPx = 340
+            )
         } else {
             null
         }
 
         for (appWidgetId in appWidgetIds) {
-            val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
-            val minHeightDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 240)
-            val isTallHybrid = minHeightDp >= HYBRID_HEIGHT_THRESHOLD_DP
-
-            val layoutRes = if (isTallHybrid) {
-                R.layout.widget_mmtb
+            val layoutRes = if (isListTab) {
+                R.layout.widget_mmtb_compact // Dedicated full-height Ro'yxat layout
             } else {
-                R.layout.widget_mmtb_compact
+                R.layout.widget_mmtb // Dedicated Heading-Up Vector HUD Xarita layout
             }
             val views = RemoteViews(context.packageName, layoutRes)
 
-            // Live GPS toggle pill state
+            // Top Xarita / Ro'yxat tab switcher buttons
+            views.setOnClickPendingIntent(
+                R.id.btn_tab_map,
+                buildTabPendingIntent(context, WidgetDataFetcher.WIDGET_TAB_MAP, 141)
+            )
+            views.setOnClickPendingIntent(
+                R.id.btn_tab_list,
+                buildTabPendingIntent(context, WidgetDataFetcher.WIDGET_TAB_LIST, 142)
+            )
+
+            // Live GPS toggle pill
             views.setTextViewText(R.id.btn_toggle_live, if (liveOn) "● Jonli" else "○ Jonli")
             views.setInt(
                 R.id.btn_toggle_live,
@@ -471,41 +493,21 @@ class MmtbWidgetProvider : AppWidgetProvider() {
                 buildSimpleActionPendingIntent(context, ACTION_TOGGLE_LIVE, 110)
             )
 
-            // Nearest facility hero row
-            if (nearest != null) {
-                views.setTextViewText(
-                    R.id.tv_hero_dist,
-                    String.format(Locale.US, "%.1f km", roadKm)
-                )
-                views.setTextViewText(R.id.tv_hero_name, nearest.name)
-                val sub = buildString {
-                    if (etaMin != null) append("~$etaMin daq · ")
-                    append(if (snapshot.hasGps) "Jonli marshrut" else "Bulung'ur markazi")
-                }
-                views.setTextViewText(R.id.tv_subtitle, sub)
+            // Refresh, Full App, Quick Search
+            views.setOnClickPendingIntent(
+                R.id.btn_refresh,
+                buildSimpleActionPendingIntent(context, ACTION_REFRESH, 104)
+            )
+            views.setOnClickPendingIntent(
+                R.id.card_open_map,
+                buildOpenAppPendingIntent(context, "/", 105)
+            )
+            views.setOnClickPendingIntent(
+                R.id.btn_quick_search,
+                buildQuickSearchPendingIntent(context, 106)
+            )
 
-                val yandexUrl = WidgetDataFetcher.buildYandexUrl(
-                    nearest,
-                    snapshot.hasGps,
-                    snapshot.refLat,
-                    snapshot.refLng
-                )
-                val googleUrl = WidgetDataFetcher.buildGoogleUrl(nearest)
-                views.setOnClickPendingIntent(
-                    R.id.btn_hero_yandex,
-                    buildDirectNavPendingIntent(context, yandexUrl, 120 + appWidgetId)
-                )
-                views.setOnClickPendingIntent(
-                    R.id.btn_hero_google,
-                    buildDirectNavPendingIntent(context, googleUrl, 220 + appWidgetId)
-                )
-            } else {
-                views.setTextViewText(R.id.tv_hero_dist, "${snapshot.locations.size} ta")
-                views.setTextViewText(R.id.tv_hero_name, "Bulung'ur MMTB")
-                views.setTextViewText(R.id.tv_subtitle, "Ma'lumot yuklanmoqda")
-            }
-
-            // Active filter pill backgrounds & intents
+            // Category filter pills
             views.setInt(
                 R.id.btn_filter_all,
                 "setBackgroundResource",
@@ -525,54 +527,8 @@ class MmtbWidgetProvider : AppWidgetProvider() {
             views.setOnClickPendingIntent(R.id.btn_filter_maktab, buildFilterPendingIntent(context, "maktab", 102))
             views.setOnClickPendingIntent(R.id.btn_filter_dmtt, buildFilterPendingIntent(context, "dmtt", 103))
 
-            // Refresh, Full App, Quick Search
-            views.setOnClickPendingIntent(
-                R.id.btn_refresh,
-                buildSimpleActionPendingIntent(context, ACTION_REFRESH, 104)
-            )
-            views.setOnClickPendingIntent(
-                R.id.card_open_map,
-                buildOpenAppPendingIntent(context, "/", 105)
-            )
-            views.setOnClickPendingIntent(
-                R.id.btn_quick_search,
-                buildQuickSearchPendingIntent(context, 106)
-            )
-
-            // Live auto-zoomed route map bitmap + tap to open interactive pinch/pan floating map
-            views.setImageViewBitmap(R.id.iv_widget_map, renderedMap.bitmap)
-            val providerTag = if (mapProvider == WidgetDataFetcher.MAP_PROVIDER_YANDEX) "Yandex" else "Google"
-            val zoomLabel = if (zoomOffset == 0) {
-                "$providerTag · Avto z${renderedMap.effectiveZoom} · Surish uchun bosing"
-            } else {
-                "$providerTag · z${renderedMap.effectiveZoom} · Surish uchun bosing"
-            }
-            views.setTextViewText(R.id.tv_map_badge, zoomLabel)
-            views.setOnClickPendingIntent(
-                R.id.iv_widget_map,
-                buildFloatingMapPendingIntent(context, 107)
-            )
-            views.setOnClickPendingIntent(
-                R.id.tv_map_badge,
-                buildFloatingMapPendingIntent(context, 108)
-            )
-
-            // Map zoom + / - / Auto buttons
-            views.setOnClickPendingIntent(
-                R.id.btn_map_zoom_in,
-                buildSimpleActionPendingIntent(context, ACTION_ZOOM_IN, 111)
-            )
-            views.setOnClickPendingIntent(
-                R.id.btn_map_zoom_out,
-                buildSimpleActionPendingIntent(context, ACTION_ZOOM_OUT, 112)
-            )
-            views.setOnClickPendingIntent(
-                R.id.btn_map_zoom_auto,
-                buildSimpleActionPendingIntent(context, ACTION_ZOOM_AUTO, 113)
-            )
-
-            // Tall Hybrid Mode: bind scrollable nearby list below the live map
-            if (isTallHybrid) {
+            if (isListTab) {
+                // Full scrollable nearby organizations list
                 val serviceIntent = Intent(context, MmtbWidgetService::class.java).apply {
                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                     data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
@@ -583,10 +539,72 @@ class MmtbWidgetProvider : AppWidgetProvider() {
                     R.id.lv_widget_locations,
                     buildRowNavTemplatePendingIntent(context, appWidgetId)
                 )
+            } else if (renderedHud != null) {
+                val g = renderedHud.guidance
+                if (nearest != null) {
+                    // Small Widget Header: ONLY distance to the next turn + direction arrow!
+                    views.setTextViewText(R.id.tv_turn_arrow, g.arrow)
+                    views.setTextViewText(
+                        R.id.tv_hero_dist,
+                        if (g.isArrived) "Yetdingiz" else WidgetMapRenderer.formatDistanceUz(g.distanceToTurnMeters)
+                    )
+                    views.setTextViewText(R.id.tv_hero_name, "${g.shortLabelUz} · ${nearest.name}")
+                    val sub = g.nextTurnPreview ?: g.streetName.ifBlank {
+                        if (snapshot.hasGps) "Burilishgacha masofa" else "Bulung'ur markazi"
+                    }
+                    views.setTextViewText(R.id.tv_subtitle, sub)
+
+                    val yandexUrl = WidgetDataFetcher.buildYandexUrl(
+                        nearest,
+                        snapshot.hasGps,
+                        snapshot.refLat,
+                        snapshot.refLng
+                    )
+                    val googleUrl = WidgetDataFetcher.buildGoogleUrl(nearest)
+                    views.setOnClickPendingIntent(
+                        R.id.btn_hero_yandex,
+                        buildDirectNavPendingIntent(context, yandexUrl, 120 + appWidgetId)
+                    )
+                    views.setOnClickPendingIntent(
+                        R.id.btn_hero_google,
+                        buildDirectNavPendingIntent(context, googleUrl, 220 + appWidgetId)
+                    )
+                } else {
+                    views.setTextViewText(R.id.tv_turn_arrow, "◎")
+                    views.setTextViewText(R.id.tv_hero_dist, "${snapshot.locations.size} ta")
+                    views.setTextViewText(R.id.tv_hero_name, "Bulung'ur MMTB")
+                    views.setTextViewText(R.id.tv_subtitle, "Ma'lumot yuklanmoqda")
+                }
+
+                // Pure vector heading-up schematic bitmap
+                views.setImageViewBitmap(R.id.iv_widget_map, renderedHud.bitmap)
+                val rangeStr = WidgetMapRenderer.formatDistanceUz(renderedHud.viewRangeMeters)
+                views.setTextViewText(R.id.tv_map_badge, "Chizma ~$rangeStr · Kattalashtirish")
+                views.setOnClickPendingIntent(
+                    R.id.iv_widget_map,
+                    buildFloatingMapPendingIntent(context, 107)
+                )
+                views.setOnClickPendingIntent(
+                    R.id.tv_map_badge,
+                    buildFloatingMapPendingIntent(context, 108)
+                )
+
+                views.setOnClickPendingIntent(
+                    R.id.btn_map_zoom_in,
+                    buildSimpleActionPendingIntent(context, ACTION_ZOOM_IN, 111)
+                )
+                views.setOnClickPendingIntent(
+                    R.id.btn_map_zoom_out,
+                    buildSimpleActionPendingIntent(context, ACTION_ZOOM_OUT, 112)
+                )
+                views.setOnClickPendingIntent(
+                    R.id.btn_map_zoom_auto,
+                    buildSimpleActionPendingIntent(context, ACTION_ZOOM_AUTO, 113)
+                )
             }
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
-            if (isTallHybrid) {
+            if (isListTab) {
                 appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.lv_widget_locations)
             }
         }
@@ -601,6 +619,23 @@ class MmtbWidgetProvider : AppWidgetProvider() {
     ): PendingIntent {
         val intent = Intent(context, MmtbWidgetProvider::class.java).apply {
             action = actionName
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    private fun buildTabPendingIntent(
+        context: Context,
+        tab: String,
+        requestCode: Int
+    ): PendingIntent {
+        val intent = Intent(context, MmtbWidgetProvider::class.java).apply {
+            action = ACTION_SET_TAB
+            putExtra(EXTRA_TAB, tab)
         }
         return PendingIntent.getBroadcast(
             context,

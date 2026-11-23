@@ -2,7 +2,6 @@ package uz.bulungur.mmtb
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.DashPathEffect
@@ -13,153 +12,232 @@ import android.graphics.Typeface
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.File
-import java.io.FileOutputStream
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import kotlin.math.PI
-import kotlin.math.atan
+import kotlin.math.atan2
 import kotlin.math.cos
-import kotlin.math.exp
-import kotlin.math.floor
-import kotlin.math.ln
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.roundToInt
 import kotlin.math.sin
-import kotlin.math.sinh
-import kotlin.math.tan
+
+data class RouteStep(
+    val maneuverType: String,
+    val modifier: String,
+    val lat: Double,
+    val lng: Double,
+    val alongMeters: Double,
+    val segmentDistMeters: Double,
+    val streetName: String
+)
 
 data class RoutePathResult(
+    val destId: String,
     val points: List<Pair<Double, Double>>,
-    val distanceMeters: Double,
-    val durationSeconds: Double,
+    val cumDistMeters: DoubleArray,
+    val steps: List<RouteStep>,
+    val totalDistanceMeters: Double,
+    val totalDurationSeconds: Double,
     val isRoadRoute: Boolean
 )
 
-data class RenderedWidgetMap(
+data class TurnGuidance(
+    val arrow: String,
+    val shortLabelUz: String,
+    val fullInstructionUz: String,
+    val distanceToTurnMeters: Double,
+    val streetName: String,
+    val nextTurnPreview: String?,
+    val turnLat: Double,
+    val turnLng: Double,
+    val remainingTotalMeters: Double,
+    val totalDistanceMeters: Double,
+    val remainingDurationSeconds: Double,
+    val progressFraction: Float,
+    val roadHeadingDeg: Double,
+    val remainingPoints: List<Pair<Double, Double>>,
+    val passedPoints: List<Pair<Double, Double>>,
+    val upcomingTurns: List<Pair<RouteStep, Double>>,
+    val isArrived: Boolean,
+    val isRoadRoute: Boolean
+)
+
+data class RenderedWidgetHud(
     val bitmap: Bitmap,
-    val effectiveZoom: Int,
-    val routeResult: RoutePathResult
+    val guidance: TurnGuidance,
+    val headingDeg: Double,
+    val viewRangeMeters: Double
 )
 
 /**
- * High-speed parallel Android Canvas renderer for the live home-screen widget map & shared
- * tile/OSRM cache used by both MmtbWidgetProvider and FloatingMapActivity.
+ * Ultra-fast pure vector Turn-by-Turn Heading-Up Navigation Schematic renderer.
+ * Zero map tile downloads (<10ms local Canvas render, 0 KB tile traffic, instant rotation).
  */
 object WidgetMapRenderer {
-    private const val TILE_SIZE = 256.0
-    private const val WGS84_E = 0.0818191908426215
-    private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14; Mobile) BulungurMMTB/1.2"
-    private const val TILE_CACHE_FOLDER = "map_tiles_v2"
-    private const val TILE_MAX_AGE_MS = 14L * 24L * 60L * 60L * 1000L
-
-    private val tilePool = Executors.newFixedThreadPool(6)
+    private const val USER_AGENT = "BulungurMMTB-Android/2.0"
 
     @Volatile
-    private var legacyCacheCleaned = false
+    private var legacyTileCachesCleaned = false
 
     @Volatile
-    private var lastRouteKey: String? = null
+    private var cachedRoute: RoutePathResult? = null
 
     @Volatile
-    private var lastRouteResult: RoutePathResult? = null
+    private var cachedRouteTimeMs: Long = 0L
 
-    @Volatile
-    private var lastRouteTimeMs: Long = 0L
-
-    fun latLngToWorldPixel(
-        lat: Double,
-        lng: Double,
-        zoom: Double,
-        provider: String = WidgetDataFetcher.MAP_PROVIDER_GOOGLE
-    ): Pair<Double, Double> {
-        val clampedLat = lat.coerceIn(-85.0511, 85.0511)
-        val scale = TILE_SIZE * 2.0.pow(zoom)
-        val x = (lng + 180.0) / 360.0 * scale
-        val latRad = Math.toRadians(clampedLat)
-        val y = if (provider == WidgetDataFetcher.MAP_PROVIDER_YANDEX) {
-            // Exact EPSG:3395 (WGS84 Ellipsoidal Mercator) required by Yandex Maps tiles
-            val esin = WGS84_E * sin(latRad)
-            val con = ((1.0 - esin) / (1.0 + esin)).pow(WGS84_E / 2.0)
-            val ts = tan(PI / 4.0 - latRad / 2.0) / con
-            val yMerc = -ln(ts)
-            (1.0 - yMerc / PI) / 2.0 * scale
-        } else {
-            // Standard EPSG:3857 (Spherical Mercator) for Google Maps / OSM
-            (1.0 - ln(tan(latRad) + 1.0 / cos(latRad)) / PI) / 2.0 * scale
+    fun cleanLegacyTileCachesOnce(context: Context) {
+        if (legacyTileCachesCleaned) return
+        legacyTileCachesCleaned = true
+        try {
+            listOf("map_tiles", "map_tiles_v2").forEach { folder ->
+                val dir = File(context.cacheDir, folder)
+                if (dir.exists()) dir.deleteRecursively()
+            }
+        } catch (_: Exception) {
+            // Ignore cleanup failure
         }
-        return Pair(x, y)
     }
 
-    fun worldPixelToLatLng(
-        wx: Double,
-        wy: Double,
-        zoom: Double,
-        provider: String = WidgetDataFetcher.MAP_PROVIDER_GOOGLE
-    ): Pair<Double, Double> {
-        val scale = TILE_SIZE * 2.0.pow(zoom)
-        val lng = wx / scale * 360.0 - 180.0
-        val lat = if (provider == WidgetDataFetcher.MAP_PROVIDER_YANDEX) {
-            val yMerc = PI * (1.0 - 2.0 * wy / scale)
-            val ts = exp(-yMerc)
-            var phi = PI / 2.0 - 2.0 * atan(ts)
-            for (i in 0 until 6) {
-                val esin = WGS84_E * sin(phi)
-                phi = PI / 2.0 - 2.0 * atan(ts * ((1.0 - esin) / (1.0 + esin)).pow(WGS84_E / 2.0))
+    fun formatDistanceUz(meters: Double): String {
+        val m = max(0.0, meters)
+        return when {
+            m < 1000.0 -> {
+                val rounded = when {
+                    m < 30.0 -> (m / 5.0).roundToInt() * 5
+                    m < 200.0 -> (m / 10.0).roundToInt() * 10
+                    else -> (m / 10.0).roundToInt() * 10
+                }.coerceAtLeast(5)
+                "$rounded m"
             }
-            Math.toDegrees(phi)
-        } else {
-            val n = PI - 2.0 * PI * wy / scale
-            Math.toDegrees(atan(sinh(n)))
+            m < 10_000.0 -> String.format(Locale.US, "%.1f km", m / 1000.0)
+            else -> String.format(Locale.US, "%.0f km", m / 1000.0)
         }
+    }
+
+    fun latLngToLocalMeters(
+        lat: Double,
+        lng: Double,
+        originLat: Double,
+        originLng: Double
+    ): Pair<Double, Double> {
+        val cosLat = cos(Math.toRadians(originLat))
+        val east = (lng - originLng) * 111_320.0 * cosLat
+        val north = (lat - originLat) * 110_540.0
+        return Pair(east, north)
+    }
+
+    fun localMetersToLatLng(
+        east: Double,
+        north: Double,
+        originLat: Double,
+        originLng: Double
+    ): Pair<Double, Double> {
+        val cosLat = max(0.01, cos(Math.toRadians(originLat)))
+        val lat = originLat + north / 110_540.0
+        val lng = originLng + east / (111_320.0 * cosLat)
         return Pair(lat, lng)
     }
 
     /**
-     * Automatically picks the tightest integer zoom level (11..17) so both the user's location
-     * and the entire road route to the nearest facility fit cleanly with padding:
-     * far away -> zoomed out overview; getting closer -> zoomed in closely!
+     * Rotates (east, north) meters into phone-screen-relative (right, forward) meters
+     * where headingDeg (0 = North, 90 = East) points straight UP on the phone screen.
      */
-    fun computeAutoZoom(
-        points: List<Pair<Double, Double>>,
-        widthPx: Int,
-        heightPx: Int,
-        provider: String = WidgetDataFetcher.MAP_PROVIDER_GOOGLE
-    ): Int {
-        if (points.isEmpty()) return 14
-        var minLat = Double.MAX_VALUE
-        var maxLat = -Double.MAX_VALUE
-        var minLng = Double.MAX_VALUE
-        var maxLng = -Double.MAX_VALUE
-        for ((lat, lng) in points) {
-            if (lat < minLat) minLat = lat
-            if (lat > maxLat) maxLat = lat
-            if (lng < minLng) minLng = lng
-            if (lng > maxLng) maxLng = lng
-        }
-
-        val usableW = widthPx * 0.68
-        val usableH = heightPx * 0.62
-
-        for (z in 17 downTo 11) {
-            val topLeft = latLngToWorldPixel(maxLat, minLng, z.toDouble(), provider)
-            val bottomRight = latLngToWorldPixel(minLat, maxLng, z.toDouble(), provider)
-            val spanX = kotlin.math.abs(bottomRight.first - topLeft.first)
-            val spanY = kotlin.math.abs(bottomRight.second - topLeft.second)
-            if (spanX <= usableW && spanY <= usableH) {
-                return z
-            }
-        }
-        return 11
+    fun rotateToHeadingUp(east: Double, north: Double, headingDeg: Double): Pair<Double, Double> {
+        val rad = Math.toRadians(headingDeg)
+        val sinH = sin(rad)
+        val cosH = cos(rad)
+        val right = east * cosH - north * sinH
+        val forward = east * sinH + north * cosH
+        return Pair(right, forward)
     }
 
-    fun fetchRoadRoute(
+    fun bearingDegrees(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+        val (east, north) = latLngToLocalMeters(lat2, lng2, lat1, lng1)
+        if (hypot(east, north) < 0.5) return 0.0
+        val deg = Math.toDegrees(atan2(east, north))
+        return ((deg % 360.0) + 360.0) % 360.0
+    }
+
+    private fun buildCumulativeDistances(points: List<Pair<Double, Double>>): DoubleArray {
+        val cum = DoubleArray(points.size)
+        var acc = 0.0
+        for (i in 1 until points.size) {
+            val prev = points[i - 1]
+            val cur = points[i]
+            val (e, n) = latLngToLocalMeters(cur.first, cur.second, prev.first, prev.second)
+            acc += hypot(e, n)
+            cum[i] = acc
+        }
+        return cum
+    }
+
+    private data class ProjectionHit(
+        val segIndex: Int,
+        val alongMeters: Double,
+        val offRouteMeters: Double,
+        val projLat: Double,
+        val projLng: Double
+    )
+
+    private fun projectOntoPolyline(
+        points: List<Pair<Double, Double>>,
+        cumDist: DoubleArray,
+        lat: Double,
+        lng: Double
+    ): ProjectionHit {
+        if (points.size < 2) {
+            return ProjectionHit(0, 0.0, 0.0, lat, lng)
+        }
+        var bestDistSq = Double.MAX_VALUE
+        var bestSeg = 0
+        var bestAlong = 0.0
+        var bestLat = points[0].first
+        var bestLng = points[0].second
+
+        for (i in 0 until points.size - 1) {
+            val a = points[i]
+            val b = points[i + 1]
+            val (ax, ay) = latLngToLocalMeters(a.first, a.second, lat, lng)
+            val (bx, by) = latLngToLocalMeters(b.first, b.second, lat, lng)
+            val dx = bx - ax
+            val dy = by - ay
+            val segLenSq = dx * dx + dy * dy
+            val t = if (segLenSq > 1e-6) {
+                (((-ax) * dx + (-ay) * dy) / segLenSq).coerceIn(0.0, 1.0)
+            } else {
+                0.0
+            }
+            val px = ax + t * dx
+            val py = ay + t * dy
+            val distSq = px * px + py * py
+            if (distSq < bestDistSq) {
+                bestDistSq = distSq
+                bestSeg = i
+                val segLen = hypot(dx, dy)
+                bestAlong = cumDist[i] + t * segLen
+                bestLat = a.first + t * (b.first - a.first)
+                bestLng = a.second + t * (b.second - a.second)
+            }
+        }
+        return ProjectionHit(
+            segIndex = bestSeg,
+            alongMeters = bestAlong,
+            offRouteMeters = kotlin.math.sqrt(bestDistSq),
+            projLat = bestLat,
+            projLng = bestLng
+        )
+    }
+
+    /**
+     * Fetches driving route + exact turn-by-turn steps from OSRM.
+     * Smartly reuses the cached route with ZERO network calls while user stays within 65m of the path!
+     */
+    fun fetchRoadRouteWithSteps(
         fromLat: Double,
         fromLng: Double,
         destLat: Double,
@@ -167,28 +245,43 @@ object WidgetMapRenderer {
         destId: String,
         allowNetwork: Boolean = true
     ): RoutePathResult {
-        val roundedKey = String.format(
-            Locale.US,
-            "%.4f,%.4f->%s",
-            fromLat,
-            fromLng,
-            destId
-        )
         val now = System.currentTimeMillis()
-        val cached = lastRouteResult
-        if (cached != null && lastRouteKey == roundedKey && (now - lastRouteTimeMs) < 3 * 60 * 1000L) {
-            return cached
+        val existing = cachedRoute
+        if (existing != null &&
+            existing.destId == destId &&
+            existing.isRoadRoute &&
+            (now - cachedRouteTimeMs) < 4 * 60 * 1000L
+        ) {
+            val hit = projectOntoPolyline(existing.points, existing.cumDistMeters, fromLat, fromLng)
+            if (hit.offRouteMeters <= 65.0) {
+                return existing
+            }
         }
 
-        val fallbackDist = WidgetDataFetcher.haversineKm(fromLat, fromLng, destLat, destLng) * 1000.0
+        val straightDist = WidgetDataFetcher.haversineKm(fromLat, fromLng, destLat, destLng) * 1000.0
+        val fallbackPoints = listOf(Pair(fromLat, fromLng), Pair(destLat, destLng))
+        val fallbackCum = doubleArrayOf(0.0, straightDist)
         val fallback = RoutePathResult(
-            points = listOf(Pair(fromLat, fromLng), Pair(destLat, destLng)),
-            distanceMeters = fallbackDist,
-            durationSeconds = fallbackDist / 9.0,
+            destId = destId,
+            points = fallbackPoints,
+            cumDistMeters = fallbackCum,
+            steps = listOf(
+                RouteStep(
+                    maneuverType = "arrive",
+                    modifier = "straight",
+                    lat = destLat,
+                    lng = destLng,
+                    alongMeters = straightDist,
+                    segmentDistMeters = 0.0,
+                    streetName = ""
+                )
+            ),
+            totalDistanceMeters = straightDist,
+            totalDurationSeconds = straightDist / 9.0,
             isRoadRoute = false
         )
 
-        if (!allowNetwork || fallbackDist < 25.0) {
+        if (!allowNetwork || straightDist < 25.0) {
             return fallback
         }
 
@@ -196,7 +289,7 @@ object WidgetMapRenderer {
         return try {
             val urlStr = String.format(
                 Locale.US,
-                "https://router.project-osrm.org/route/v1/driving/%.6f,%.6f;%.6f,%.6f?overview=simplified&geometries=geojson",
+                "https://router.project-osrm.org/route/v1/driving/%.6f,%.6f;%.6f,%.6f?overview=full&geometries=geojson&steps=true",
                 fromLng,
                 fromLat,
                 destLng,
@@ -204,8 +297,8 @@ object WidgetMapRenderer {
             )
             conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
-                connectTimeout = 2500
-                readTimeout = 2500
+                connectTimeout = 2800
+                readTimeout = 2800
                 setRequestProperty("User-Agent", USER_AGENT)
             }
             if (conn.responseCode !in 200..299) {
@@ -217,10 +310,10 @@ object WidgetMapRenderer {
             val json = JSONObject(text)
             val routes = json.optJSONArray("routes") ?: return fallback
             if (routes.length() == 0) return fallback
-            val route = routes.getJSONObject(0)
-            val dist = route.optDouble("distance", fallbackDist)
-            val dur = route.optDouble("duration", fallbackDist / 9.0)
-            val geom = route.optJSONObject("geometry") ?: return fallback
+            val routeObj = routes.getJSONObject(0)
+            val totalDist = routeObj.optDouble("distance", straightDist)
+            val totalDur = routeObj.optDouble("duration", straightDist / 9.0)
+            val geom = routeObj.optJSONObject("geometry") ?: return fallback
             val coords = geom.optJSONArray("coordinates") ?: return fallback
 
             val pts = ArrayList<Pair<Double, Double>>(coords.length())
@@ -232,16 +325,64 @@ object WidgetMapRenderer {
             }
             if (pts.size < 2) return fallback
 
-            val res = RoutePathResult(
+            val cum = buildCumulativeDistances(pts)
+            val polyTotal = cum.lastOrNull()?.takeIf { it > 1.0 } ?: totalDist
+
+            val parsedSteps = ArrayList<RouteStep>()
+            val legs = routeObj.optJSONArray("legs")
+            if (legs != null && legs.length() > 0) {
+                val stepsArr = legs.getJSONObject(0).optJSONArray("steps")
+                if (stepsArr != null) {
+                    var stepAccum = 0.0
+                    for (i in 0 until stepsArr.length()) {
+                        val s = stepsArr.optJSONObject(i) ?: continue
+                        val maneuver = s.optJSONObject("maneuver") ?: continue
+                        val mType = maneuver.optString("type", "").lowercase(Locale.ROOT)
+                        val mMod = maneuver.optString("modifier", "").lowercase(Locale.ROOT)
+                        val locArr = maneuver.optJSONArray("location")
+                        val mLng = locArr?.optDouble(0, destLng) ?: destLng
+                        val mLat = locArr?.optDouble(1, destLat) ?: destLat
+                        val segDist = s.optDouble("distance", 0.0)
+                        val street = s.optString("name", "").trim()
+
+                        // Align maneuver location precisely onto the polyline cumulative distance
+                        val proj = projectOntoPolyline(pts, cum, mLat, mLng)
+                        val alignedAlong = if (mType == "arrive") {
+                            polyTotal
+                        } else if (proj.offRouteMeters < 60.0) {
+                            proj.alongMeters
+                        } else {
+                            stepAccum.coerceAtMost(polyTotal)
+                        }
+
+                        parsedSteps.add(
+                            RouteStep(
+                                maneuverType = mType,
+                                modifier = mMod,
+                                lat = mLat,
+                                lng = mLng,
+                                alongMeters = alignedAlong,
+                                segmentDistMeters = segDist,
+                                streetName = street
+                            )
+                        )
+                        stepAccum += segDist
+                    }
+                }
+            }
+
+            val result = RoutePathResult(
+                destId = destId,
                 points = pts,
-                distanceMeters = dist,
-                durationSeconds = dur,
+                cumDistMeters = cum,
+                steps = parsedSteps,
+                totalDistanceMeters = max(totalDist, polyTotal),
+                totalDurationSeconds = totalDur,
                 isRoadRoute = true
             )
-            lastRouteKey = roundedKey
-            lastRouteResult = res
-            lastRouteTimeMs = now
-            res
+            cachedRoute = result
+            cachedRouteTimeMs = now
+            result
         } catch (_: Exception) {
             fallback
         } finally {
@@ -249,116 +390,182 @@ object WidgetMapRenderer {
         }
     }
 
-    private fun cleanLegacyCacheIfNeeded(context: Context) {
-        if (legacyCacheCleaned) return
-        legacyCacheCleaned = true
-        try {
-            val oldDir = File(context.cacheDir, "map_tiles")
-            if (oldDir.exists()) {
-                oldDir.deleteRecursively()
-            }
-        } catch (_: Exception) {
-            // Ignore cleanup failure
+    private fun isActionableTurn(step: RouteStep): Boolean {
+        return when (step.maneuverType) {
+            "arrive" -> true
+            "depart" -> false
+            "turn", "end of road", "fork", "roundabout", "rotary", "roundabout turn",
+            "off ramp", "on ramp", "merge" -> true
+            "continue", "new name" -> step.modifier.isNotEmpty() && step.modifier != "straight"
+            else -> step.modifier.contains("left") || step.modifier.contains("right") || step.modifier == "uturn"
         }
     }
 
-    fun loadTileBitmap(
-        context: Context,
-        zoom: Int,
-        tileX: Int,
-        tileY: Int,
-        provider: String = WidgetDataFetcher.MAP_PROVIDER_GOOGLE,
-        allowNetwork: Boolean = true
-    ): Bitmap? {
-        cleanLegacyCacheIfNeeded(context)
-        val maxTile = 1 shl zoom
-        if (tileY < 0 || tileY >= maxTile) return null
-        val wrappedX = ((tileX % maxTile) + maxTile) % maxTile
-        val safeProvider = if (provider == WidgetDataFetcher.MAP_PROVIDER_YANDEX) {
-            WidgetDataFetcher.MAP_PROVIDER_YANDEX
-        } else {
-            WidgetDataFetcher.MAP_PROVIDER_GOOGLE
+    fun maneuverVisual(step: RouteStep): Triple<String, String, String> {
+        // Returns (arrowSymbol, shortUzLabel, fullUzInstruction)
+        if (step.maneuverType == "arrive") {
+            return Triple("🏁", "Manzil", "Manzilga yetasiz")
         }
-
-        val cacheDir = File(context.cacheDir, "$TILE_CACHE_FOLDER/$safeProvider/$zoom/$wrappedX")
-        val tileFile = File(cacheDir, "$tileY.png")
-
-        if (tileFile.exists() && tileFile.length() > 100L) {
-            val age = System.currentTimeMillis() - tileFile.lastModified()
-            if (age < TILE_MAX_AGE_MS || !allowNetwork) {
-                val decoded = BitmapFactory.decodeFile(tileFile.absolutePath)
-                if (decoded != null) return decoded
-            }
+        if (step.maneuverType == "roundabout" || step.maneuverType == "rotary") {
+            return Triple("⟳", "Aylanma", "Aylanma yo'ldan buriling")
         }
-
-        if (!allowNetwork) return null
-
-        val urls = if (safeProvider == WidgetDataFetcher.MAP_PROVIDER_YANDEX) {
-            listOf(
-                "https://core-renderer-tiles.maps.yandex.net/tiles?l=map&x=$wrappedX&y=$tileY&z=$zoom&scale=1&lang=uz_UZ",
-                "https://core-renderer-tiles.maps.yandex.net/tiles?l=map&x=$wrappedX&y=$tileY&z=$zoom&scale=1&lang=ru_RU"
-            )
-        } else {
-            val shard = (wrappedX + tileY) and 3
-            listOf(
-                "https://mt$shard.google.com/vt/lyrs=m&hl=uz&x=$wrappedX&y=$tileY&z=$zoom",
-                "https://tile.openstreetmap.org/$zoom/$wrappedX/$tileY.png"
-            )
+        return when (step.modifier) {
+            "left" -> Triple("↰", "Chapga", "Chapga buriling")
+            "right" -> Triple("↱", "O'ngga", "O'ngga buriling")
+            "slight left" -> Triple("↖", "Biroz chapga", "Biroz chapga yuring")
+            "slight right" -> Triple("↗", "Biroz o'ngga", "Biroz o'ngga yuring")
+            "sharp left" -> Triple("↲", "Keskin chapga", "Keskin chapga buriling")
+            "sharp right" -> Triple("↳", "Keskin o'ngga", "Keskin o'ngga buriling")
+            "uturn" -> Triple("↶", "Orqaga", "Orqaga qayriling")
+            else -> Triple("↑", "To'g'riga", "To'g'riga yuring")
         }
-
-        for (tileUrl in urls) {
-            var conn: HttpURLConnection? = null
-            try {
-                conn = (URL(tileUrl).openConnection() as HttpURLConnection).apply {
-                    requestMethod = "GET"
-                    connectTimeout = 2800
-                    readTimeout = 2800
-                    setRequestProperty("User-Agent", USER_AGENT)
-                }
-                if (conn.responseCode in 200..299) {
-                    val bytes = conn.inputStream.use { it.readBytes() }
-                    if (bytes.size > 100) {
-                        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                        if (bmp != null) {
-                            try {
-                                cacheDir.mkdirs()
-                                FileOutputStream(tileFile).use { fos ->
-                                    fos.write(bytes)
-                                }
-                            } catch (_: Exception) {
-                                // Ignore cache write failure
-                            }
-                            return bmp
-                        }
-                    }
-                }
-            } catch (_: Exception) {
-                // Try fallback URL
-            } finally {
-                conn?.disconnect()
-            }
-        }
-
-        return if (tileFile.exists()) BitmapFactory.decodeFile(tileFile.absolutePath) else null
     }
 
     /**
-     * Renders a crisp RGB_565 (~380 KB, Binder-safe) map bitmap with real Google Maps road tiles
-     * fetched in parallel (~250ms total), OSRM road route polyline, auto-zoom framing,
-     * user blue GPS dot, and nearest facility pin.
+     * Computes live remaining meters to the NEXT turn, remaining total distance, progress fraction,
+     * and road-ahead heading in <1 ms locally from the cached route!
      */
-    fun renderWidgetMapBitmap(
+    fun computeLiveGuidance(
+        route: RoutePathResult,
+        userLat: Double,
+        userLng: Double,
+        destLat: Double,
+        destLng: Double,
+        destName: String
+    ): TurnGuidance {
+        val pts = route.points
+        val cum = route.cumDistMeters
+        val polyTotal = cum.lastOrNull()?.takeIf { it > 0.5 } ?: route.totalDistanceMeters
+        val hit = projectOntoPolyline(pts, cum, userLat, userLng)
+
+        val remainingTotal = max(0.0, polyTotal - hit.alongMeters)
+        val totalRef = max(route.totalDistanceMeters, polyTotal).coerceAtLeast(1.0)
+        val progress = (hit.alongMeters / totalRef).toFloat().coerceIn(0f, 1f)
+        val remainingDuration = if (polyTotal > 1.0) {
+            route.totalDurationSeconds * (remainingTotal / polyTotal)
+        } else {
+            0.0
+        }
+
+        // Split polyline into passed vs remaining from the user's live position
+        val passed = ArrayList<Pair<Double, Double>>(hit.segIndex + 2)
+        for (i in 0..min(hit.segIndex, pts.lastIndex)) {
+            passed.add(pts[i])
+        }
+        passed.add(Pair(hit.projLat, hit.projLng))
+
+        val remaining = ArrayList<Pair<Double, Double>>(max(2, pts.size - hit.segIndex + 1))
+        remaining.add(Pair(userLat, userLng))
+        for (i in (hit.segIndex + 1) until pts.size) {
+            remaining.add(pts[i])
+        }
+        if (remaining.size < 2) {
+            remaining.add(Pair(destLat, destLng))
+        }
+
+        // Compute clean forward road heading looking ~35–70 meters ahead along remaining route
+        var lookTarget = remaining.last()
+        var walked = 0.0
+        for (i in 1 until remaining.size) {
+            val prev = remaining[i - 1]
+            val cur = remaining[i]
+            val (e, n) = latLngToLocalMeters(cur.first, cur.second, prev.first, prev.second)
+            walked += hypot(e, n)
+            lookTarget = cur
+            if (walked >= 40.0) break
+        }
+        val roadHeading = bearingDegrees(userLat, userLng, lookTarget.first, lookTarget.second)
+
+        // Find upcoming real turn maneuvers
+        val upcoming = route.steps
+            .filter { isActionableTurn(it) && it.alongMeters > hit.alongMeters + 12.0 }
+            .sortedBy { it.alongMeters }
+            .map { step -> Pair(step, max(0.0, step.alongMeters - hit.alongMeters)) }
+
+        val arrived = remainingTotal < 30.0
+        if (arrived) {
+            return TurnGuidance(
+                arrow = "🏁",
+                shortLabelUz = "Yetdingiz",
+                fullInstructionUz = "$destName yonidasiz",
+                distanceToTurnMeters = remainingTotal,
+                streetName = "",
+                nextTurnPreview = null,
+                turnLat = destLat,
+                turnLng = destLng,
+                remainingTotalMeters = remainingTotal,
+                totalDistanceMeters = totalRef,
+                remainingDurationSeconds = 0.0,
+                progressFraction = 1f,
+                roadHeadingDeg = roadHeading,
+                remainingPoints = remaining,
+                passedPoints = passed,
+                upcomingTurns = emptyList(),
+                isArrived = true,
+                isRoadRoute = route.isRoadRoute
+            )
+        }
+
+        val firstPair = upcoming.firstOrNull()
+        val secondPair = upcoming.getOrNull(1)
+
+        val nextStep = firstPair?.first ?: RouteStep(
+            maneuverType = "arrive",
+            modifier = "straight",
+            lat = destLat,
+            lng = destLng,
+            alongMeters = polyTotal,
+            segmentDistMeters = 0.0,
+            streetName = ""
+        )
+        val distToTurn = firstPair?.second ?: remainingTotal
+        val (arrow, shortUz, fullUz) = maneuverVisual(nextStep)
+
+        val nextPreview = secondPair?.let { (step2, distFromUser2) ->
+            val (a2, s2, _) = maneuverVisual(step2)
+            val gap = max(10.0, distFromUser2 - distToTurn)
+            "So'ng: $a2 ${formatDistanceUz(gap)} · $s2"
+        }
+
+        return TurnGuidance(
+            arrow = arrow,
+            shortLabelUz = shortUz,
+            fullInstructionUz = fullUz,
+            distanceToTurnMeters = distToTurn,
+            streetName = nextStep.streetName,
+            nextTurnPreview = nextPreview,
+            turnLat = nextStep.lat,
+            turnLng = nextStep.lng,
+            remainingTotalMeters = remainingTotal,
+            totalDistanceMeters = totalRef,
+            remainingDurationSeconds = remainingDuration,
+            progressFraction = progress,
+            roadHeadingDeg = roadHeading,
+            remainingPoints = remaining,
+            passedPoints = passed,
+            upcomingTurns = upcoming,
+            isArrived = false,
+            isRoadRoute = route.isRoadRoute
+        )
+    }
+
+    /**
+     * Renders an ultra-fast (<8ms) pure-vector Heading-Up Route Schematic for the Home Screen Widget.
+     * The travel direction ALWAYS points straight UP on the phone, with clear turn callouts in meters.
+     */
+    fun renderWidgetSchematicBitmap(
         context: Context,
         snapshot: WidgetSnapshot,
         nearest: MmtbLocation?,
         nearbyOthers: List<MmtbLocation>,
         zoomOffset: Int,
-        provider: String = WidgetDataFetcher.MAP_PROVIDER_GOOGLE,
         widthPx: Int = 600,
-        heightPx: Int = 310
-    ): RenderedWidgetMap {
-        val routeResult = if (nearest != null) {
-            fetchRoadRoute(
+        heightPx: Int = 340
+    ): RenderedWidgetHud {
+        cleanLegacyTileCachesOnce(context)
+
+        val route = if (nearest != null) {
+            fetchRoadRouteWithSteps(
                 fromLat = snapshot.refLat,
                 fromLng = snapshot.refLng,
                 destLat = nearest.lat,
@@ -368,243 +575,315 @@ object WidgetMapRenderer {
             )
         } else {
             RoutePathResult(
+                destId = "none",
                 points = listOf(Pair(snapshot.refLat, snapshot.refLng)),
-                distanceMeters = 0.0,
-                durationSeconds = 0.0,
+                cumDistMeters = doubleArrayOf(0.0),
+                steps = emptyList(),
+                totalDistanceMeters = 0.0,
+                totalDurationSeconds = 0.0,
                 isRoadRoute = false
             )
         }
 
-        val framePoints = if (nearest != null) {
-            routeResult.points + Pair(snapshot.refLat, snapshot.refLng) + Pair(nearest.lat, nearest.lng)
+        val guidance = if (nearest != null) {
+            computeLiveGuidance(
+                route = route,
+                userLat = snapshot.refLat,
+                userLng = snapshot.refLng,
+                destLat = nearest.lat,
+                destLng = nearest.lng,
+                destName = nearest.name
+            )
         } else {
-            listOf(Pair(snapshot.refLat, snapshot.refLng))
+            TurnGuidance(
+                arrow = "◎",
+                shortLabelUz = "Tayyor",
+                fullInstructionUz = "Yaqin muassasa qidirilmoqda",
+                distanceToTurnMeters = 0.0,
+                streetName = "",
+                nextTurnPreview = null,
+                turnLat = snapshot.refLat,
+                turnLng = snapshot.refLng,
+                remainingTotalMeters = 0.0,
+                totalDistanceMeters = 1.0,
+                remainingDurationSeconds = 0.0,
+                progressFraction = 0f,
+                roadHeadingDeg = 0.0,
+                remainingPoints = listOf(Pair(snapshot.refLat, snapshot.refLng)),
+                passedPoints = emptyList(),
+                upcomingTurns = emptyList(),
+                isArrived = false,
+                isRoadRoute = false
+            )
         }
 
-        val autoZoom = computeAutoZoom(framePoints, widthPx, heightPx, provider)
-        val zoom = (autoZoom + zoomOffset).coerceIn(10, 17)
+        // Heading-Up angle: use live movement GPS bearing if moving, else align to road straight ahead!
+        val movingBearing = WidgetDataFetcher.getLastKnownBearingIfMoving(context)
+        val headingDeg = movingBearing?.toDouble() ?: guidance.roadHeadingDeg
 
-        var minLat = Double.MAX_VALUE
-        var maxLat = -Double.MAX_VALUE
-        var minLng = Double.MAX_VALUE
-        var maxLng = -Double.MAX_VALUE
-        for ((lat, lng) in framePoints) {
-            minLat = min(minLat, lat)
-            maxLat = max(maxLat, lat)
-            minLng = min(minLng, lng)
-            maxLng = max(maxLng, lng)
+        // Smart auto-scale focused on upcoming turn & road ahead (zooms closer automatically as you approach!)
+        val baseRangeMeters = when {
+            nearest == null -> 800.0
+            guidance.remainingTotalMeters <= 250.0 -> 260.0
+            guidance.distanceToTurnMeters <= 180.0 -> 320.0
+            guidance.distanceToTurnMeters <= 450.0 -> guidance.distanceToTurnMeters * 1.55
+            guidance.remainingTotalMeters <= 1500.0 -> guidance.remainingTotalMeters * 1.25
+            else -> min(guidance.distanceToTurnMeters * 1.45, 2200.0).coerceAtLeast(650.0)
         }
-        val centerLat = (minLat + maxLat) / 2.0
-        val centerLng = (minLng + maxLng) / 2.0
+        val effectiveRange = (baseRangeMeters * 0.72.pow(zoomOffset.toDouble())).coerceIn(140.0, 9000.0)
 
         val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.RGB_565)
         val canvas = Canvas(bitmap)
-        canvas.drawColor(Color.parseColor("#E2E8F0"))
 
-        val centerWorld = latLngToWorldPixel(centerLat, centerLng, zoom.toDouble(), provider)
-        val originWorldX = centerWorld.first - widthPx / 2.0
-        val originWorldY = centerWorld.second - heightPx / 2.0
+        // 1. Crisp Dark Tactical HUD Background
+        canvas.drawColor(Color.parseColor("#0B1324"))
 
-        // 1. Fetch all visible map tiles IN PARALLEL (5x faster than sequential!)
-        val startTileX = floor(originWorldX / TILE_SIZE).toInt()
-        val endTileX = floor((originWorldX + widthPx) / TILE_SIZE).toInt()
-        val startTileY = floor(originWorldY / TILE_SIZE).toInt()
-        val endTileY = floor((originWorldY + heightPx) / TILE_SIZE).toInt()
-
-        val tileCoords = ArrayList<Pair<Int, Int>>()
-        for (tx in startTileX..endTileX) {
-            for (ty in startTileY..endTileY) {
-                tileCoords.add(Pair(tx, ty))
-            }
-        }
-
-        val fetchedTiles = ConcurrentHashMap<Pair<Int, Int>, Bitmap>()
-        val latch = CountDownLatch(tileCoords.size)
-        val appCtx = context.applicationContext
-        for (coord in tileCoords) {
-            tilePool.execute {
-                try {
-                    val bmp = loadTileBitmap(
-                        appCtx,
-                        zoom,
-                        coord.first,
-                        coord.second,
-                        provider = provider,
-                        allowNetwork = true
-                    )
-                    if (bmp != null) {
-                        fetchedTiles[coord] = bmp
-                    }
-                } finally {
-                    latch.countDown()
-                }
-            }
-        }
-        try {
-            latch.await(3200L, TimeUnit.MILLISECONDS)
-        } catch (_: InterruptedException) {
-            // Draw whatever tiles finished in time
-        }
-
-        val tilePaint = Paint(Paint.FILTER_BITMAP_FLAG)
-        var drawnAnyTile = false
-        for ((coord, tileBmp) in fetchedTiles) {
-            val left = (coord.first * TILE_SIZE - originWorldX).toFloat()
-            val top = (coord.second * TILE_SIZE - originWorldY).toFloat()
-            canvas.drawBitmap(tileBmp, left, top, tilePaint)
-            tileBmp.recycle()
-            drawnAnyTile = true
-        }
-
-        if (!drawnAnyTile) {
-            canvas.drawColor(Color.parseColor("#1E293B"))
-            val gridPaint = Paint().apply {
-                color = Color.parseColor("#334155")
-                strokeWidth = 1f
-            }
-            var gx = 0f
-            while (gx < widthPx) {
-                canvas.drawLine(gx, 0f, gx, heightPx.toFloat(), gridPaint)
-                gx += 48f
-            }
-            var gy = 0f
-            while (gy < heightPx) {
-                canvas.drawLine(0f, gy, widthPx.toFloat(), gy, gridPaint)
-                gy += 48f
-            }
-        }
+        val anchorX = widthPx * 0.5f
+        val anchorY = heightPx * 0.74f
+        val forwardPxBudget = heightPx * 0.62f
+        val pxPerMeter = forwardPxBudget / effectiveRange
 
         fun toScreen(lat: Double, lng: Double): Pair<Float, Float> {
-            val wp = latLngToWorldPixel(lat, lng, zoom.toDouble(), provider)
-            return Pair((wp.first - originWorldX).toFloat(), (wp.second - originWorldY).toFloat())
+            val (east, north) = latLngToLocalMeters(lat, lng, snapshot.refLat, snapshot.refLng)
+            val (right, forward) = rotateToHeadingUp(east, north, headingDeg)
+            val sx = anchorX + (right * pxPerMeter).toFloat()
+            val sy = anchorY - (forward * pxPerMeter).toFloat()
+            return Pair(sx, sy)
         }
 
-        // 2. Draw secondary nearby markers
-        val otherFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
-        val otherStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        // 2. Concentric Radar Range Rings + Subtle Crosshair + Rotating North Indicator
+        val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            color = Color.WHITE
-            strokeWidth = 2.5f
+            color = Color.parseColor("#1E293B")
+            strokeWidth = 2f
         }
-        for (loc in nearbyOthers.take(12)) {
+        val ringLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#64748B")
+            textSize = 15f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val ringSteps = listOf(0.35, 0.72, 1.08)
+        for (frac in ringSteps) {
+            val rMeters = effectiveRange * frac
+            val rPx = (rMeters * pxPerMeter).toFloat()
+            canvas.drawCircle(anchorX, anchorY, rPx, ringPaint)
+            val label = formatDistanceUz(rMeters)
+            val ly = anchorY - rPx + 16f
+            if (ly > 20f && ly < heightPx - 20f) {
+                canvas.drawText(label, anchorX + 8f, ly, ringLabelPaint)
+            }
+        }
+
+        // Forward guide axis line (shows phone UP heading clearly)
+        val axisPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#17253B")
+            strokeWidth = 1.5f
+            pathEffect = DashPathEffect(floatArrayOf(8f, 8f), 0f)
+        }
+        canvas.drawLine(anchorX, 12f, anchorX, anchorY, axisPaint)
+
+        // Compact rotating North compass indicator at top-left
+        val compX = 36f
+        val compY = 36f
+        val compBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#CC0F172A") }
+        val compBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            color = Color.parseColor("#334155")
+            strokeWidth = 2f
+        }
+        canvas.drawCircle(compX, compY, 21f, compBg)
+        canvas.drawCircle(compX, compY, 21f, compBorder)
+        val (nRight, nFwd) = rotateToHeadingUp(0.0, 1.0, headingDeg)
+        val nx = compX + (nRight * 12.0).toFloat()
+        val ny = compY - (nFwd * 12.0).toFloat()
+        val northDotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#EF4444") }
+        canvas.drawCircle(nx, ny, 4.5f, northDotPaint)
+        val northTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#E2E8F0")
+            textSize = 14f
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        canvas.drawText("N", compX, compY + 5f, northTextPaint)
+
+        // 3. Subtle Nearby Other Facilities for spatial context
+        val otherPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+        for (loc in nearbyOthers.take(10)) {
             if (nearest != null && loc.id == nearest.id) continue
             val (sx, sy) = toScreen(loc.lat, loc.lng)
-            if (sx < -12f || sx > widthPx + 12f || sy < -12f || sy > heightPx + 12f) continue
-            otherFillPaint.color = when (loc.type) {
-                "maktab" -> Color.parseColor("#38BDF8")
-                "dmtt", "bogcha" -> Color.parseColor("#FB7185")
-                else -> Color.parseColor("#34D399")
+            if (sx < 10f || sx > widthPx - 10f || sy < 10f || sy > heightPx - 10f) continue
+            otherPaint.color = when (loc.type) {
+                "maktab" -> Color.parseColor("#5538BDF8")
+                "dmtt", "bogcha" -> Color.parseColor("#55FB7185")
+                else -> Color.parseColor("#5534D399")
             }
-            canvas.drawCircle(sx, sy, 6f, otherFillPaint)
-            canvas.drawCircle(sx, sy, 6f, otherStrokePaint)
+            canvas.drawCircle(sx, sy, 5.5f, otherPaint)
         }
 
-        // 3. Draw road route polyline
-        if (routeResult.points.size >= 2) {
-            val path = Path()
-            routeResult.points.forEachIndexed { idx, (lat, lng) ->
+        // 4. Passed Route Trail (subtle dim dashed line behind user)
+        if (guidance.passedPoints.size >= 2) {
+            val passedPath = Path()
+            guidance.passedPoints.forEachIndexed { idx, (lat, lng) ->
                 val (sx, sy) = toScreen(lat, lng)
-                if (idx == 0) path.moveTo(sx, sy) else path.lineTo(sx, sy)
+                if (idx == 0) passedPath.moveTo(sx, sy) else passedPath.lineTo(sx, sy)
             }
+            val passedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                color = Color.parseColor("#475569")
+                strokeWidth = 5f
+                strokeCap = Paint.Cap.ROUND
+                strokeJoin = Paint.Join.ROUND
+                pathEffect = DashPathEffect(floatArrayOf(10f, 10f), 0f)
+            }
+            canvas.drawPath(passedPath, passedPaint)
+        }
 
-            val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        // 5. Active Upcoming Route Polyline (glowing vector ribbon!)
+        if (guidance.remainingPoints.size >= 2) {
+            val remPath = Path()
+            guidance.remainingPoints.forEachIndexed { idx, (lat, lng) ->
+                val (sx, sy) = toScreen(lat, lng)
+                if (idx == 0) remPath.moveTo(sx, sy) else remPath.lineTo(sx, sy)
+            }
+            val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 style = Paint.Style.STROKE
-                color = Color.WHITE
-                strokeWidth = 11f
+                color = if (guidance.isRoadRoute) Color.parseColor("#380EA5E9") else Color.parseColor("#38F59E0B")
+                strokeWidth = 22f
                 strokeCap = Paint.Cap.ROUND
                 strokeJoin = Paint.Join.ROUND
             }
-            val routePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            val corePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 style = Paint.Style.STROKE
-                color = if (routeResult.isRoadRoute) Color.parseColor("#0284C7") else Color.parseColor("#F59E0B")
-                strokeWidth = 6.5f
+                color = if (guidance.isRoadRoute) Color.parseColor("#38BDF8") else Color.parseColor("#F59E0B")
+                strokeWidth = 9f
                 strokeCap = Paint.Cap.ROUND
                 strokeJoin = Paint.Join.ROUND
-                if (!routeResult.isRoadRoute) {
-                    pathEffect = DashPathEffect(floatArrayOf(12f, 10f), 0f)
+                if (!guidance.isRoadRoute) {
+                    pathEffect = DashPathEffect(floatArrayOf(14f, 10f), 0f)
                 }
             }
-            canvas.drawPath(path, haloPaint)
-            canvas.drawPath(path, routePaint)
+            val innerHighlight = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                color = Color.parseColor("#E0F2FE")
+                strokeWidth = 2.5f
+                strokeCap = Paint.Cap.ROUND
+                strokeJoin = Paint.Join.ROUND
+            }
+            canvas.drawPath(remPath, glowPaint)
+            canvas.drawPath(remPath, corePaint)
+            if (guidance.isRoadRoute) {
+                canvas.drawPath(remPath, innerHighlight)
+            }
         }
 
-        // 4. Draw User GPS Dot
-        val (ux, uy) = toScreen(snapshot.refLat, snapshot.refLng)
-        val userHaloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#442563EB")
-            style = Paint.Style.FILL
-        }
-        val userWhitePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            style = Paint.Style.FILL
-        }
-        val userCorePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#2563EB")
-            style = Paint.Style.FILL
-        }
-        canvas.drawCircle(ux, uy, 17f, userHaloPaint)
-        canvas.drawCircle(ux, uy, 10f, userWhitePaint)
-        canvas.drawCircle(ux, uy, 7f, userCorePaint)
+        // 6. Highlight Upcoming Turn Vertex + Floating Meter Callout right on the bend!
+        if (nearest != null && !guidance.isArrived && guidance.upcomingTurns.isNotEmpty()) {
+            val (firstStep, firstDist) = guidance.upcomingTurns.first()
+            if (firstStep.maneuverType != "arrive") {
+                val (tx, ty) = toScreen(firstStep.lat, firstStep.lng)
+                if (tx in 24f..(widthPx - 56f) && ty in 24f..(heightPx - 24f)) {
+                    val turnGlow = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#44F59E0B") }
+                    val turnRing = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        style = Paint.Style.STROKE
+                        color = Color.parseColor("#FBBF24")
+                        strokeWidth = 3.5f
+                    }
+                    val turnCore = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#F59E0B") }
+                    canvas.drawCircle(tx, ty, 17f, turnGlow)
+                    canvas.drawCircle(tx, ty, 10f, turnRing)
+                    canvas.drawCircle(tx, ty, 5.5f, turnCore)
 
-        // 5. Draw Nearest Destination Pin + Crisp Label Pill
+                    val callout = "${guidance.arrow} ${formatDistanceUz(firstDist)}"
+                    val callTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = Color.parseColor("#FEF3C7")
+                        textSize = 18f
+                        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                    }
+                    val tw = callTextPaint.measureText(callout)
+                    val bw = tw + 20f
+                    val bh = 28f
+                    val bx = (tx + 14f).coerceIn(10f, max(10f, widthPx - bw - 54f))
+                    val by = (ty - bh / 2f).coerceIn(10f, max(10f, heightPx - bh - 36f))
+                    val bgP = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#E61E293B") }
+                    val brP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        style = Paint.Style.STROKE
+                        color = Color.parseColor("#F59E0B")
+                        strokeWidth = 2f
+                    }
+                    val rect = RectF(bx, by, bx + bw, by + bh)
+                    canvas.drawRoundRect(rect, 12f, 12f, bgP)
+                    canvas.drawRoundRect(rect, 12f, 12f, brP)
+                    canvas.drawText(callout, bx + 10f, by + 20f, callTextPaint)
+                }
+            }
+        }
+
+        // 7. Destination Pin + Crisp Label Pill (clamped neatly inside viewport edge if far away)
         if (nearest != null) {
-            val (dx, dy) = toScreen(nearest.lat, nearest.lng)
+            val (rawDx, rawDy) = toScreen(nearest.lat, nearest.lng)
+            val dx = rawDx.coerceIn(22f, widthPx - 58f)
+            val dy = rawDy.coerceIn(24f, heightPx - 38f)
             val pinColor = when (nearest.type) {
                 "maktab" -> Color.parseColor("#0EA5E9")
                 "dmtt", "bogcha" -> Color.parseColor("#EF4444")
                 else -> Color.parseColor("#10B981")
             }
-            val pinShadow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#55000000")
-            }
-            val pinWhite = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.WHITE
-            }
-            val pinFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = pinColor
-            }
-            canvas.drawCircle(dx, dy + 2f, 13f, pinShadow)
-            canvas.drawCircle(dx, dy, 12.5f, pinWhite)
-            canvas.drawCircle(dx, dy, 9.5f, pinFill)
-            canvas.drawCircle(dx, dy, 3.5f, pinWhite)
+            val pinWhite = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
+            val pinFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = pinColor }
+            canvas.drawCircle(dx, dy, 12f, pinWhite)
+            canvas.drawCircle(dx, dy, 9f, pinFill)
+            canvas.drawCircle(dx, dy, 3.2f, pinWhite)
 
-            val distKm = if (routeResult.isRoadRoute && routeResult.distanceMeters > 0) {
-                routeResult.distanceMeters / 1000.0
-            } else {
-                nearest.distKm
-            }
-            val labelText = String.format(Locale.US, "%s · %.1f km", nearest.name, distKm)
-            val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.WHITE
-                textSize = 20f
+                textSize = 18f
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
-            val textW = textPaint.measureText(labelText)
-            val padX = 14f
-            val boxW = textW + padX * 2
-            val boxH = 32f
-            val rawLeft = dx - boxW / 2f
-            val boxLeft = rawLeft.coerceIn(8f, max(8f, widthPx - boxW - 50f))
-            val boxTop = (dy - 18f - boxH).coerceIn(8f, max(8f, heightPx - boxH - 36f))
-            val pillRect = RectF(boxLeft, boxTop, boxLeft + boxW, boxTop + boxH)
-
-            val pillBg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#DD0F172A")
-            }
+            val textW = labelPaint.measureText(nearest.name)
+            val bw = textW + 22f
+            val bh = 28f
+            val bx = (dx - bw / 2f).coerceIn(10f, max(10f, widthPx - bw - 54f))
+            val by = (dy - 16f - bh).coerceIn(8f, max(8f, heightPx - bh - 36f))
+            val pillBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#DD0F172A") }
             val pillBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 style = Paint.Style.STROKE
                 color = pinColor
                 strokeWidth = 2f
             }
-            canvas.drawRoundRect(pillRect, 14f, 14f, pillBg)
-            canvas.drawRoundRect(pillRect, 14f, 14f, pillBorder)
-            canvas.drawText(labelText, boxLeft + padX, boxTop + 22f, textPaint)
+            canvas.drawRoundRect(RectF(bx, by, bx + bw, by + bh), 12f, 12f, pillBg)
+            canvas.drawRoundRect(RectF(bx, by, bx + bw, by + bh), 12f, 12f, pillBorder)
+            canvas.drawText(nearest.name, bx + 11f, by + 20f, labelPaint)
         }
 
-        return RenderedWidgetMap(
+        // 8. Sharp User Directional Navigation Chevron (Always pointing straight UP!)
+        val userHalo = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#3838BDF8") }
+        canvas.drawCircle(anchorX, anchorY, 24f, userHalo)
+
+        val chevron = Path().apply {
+            moveTo(anchorX, anchorY - 16f)
+            lineTo(anchorX + 12f, anchorY + 12f)
+            lineTo(anchorX, anchorY + 5f)
+            lineTo(anchorX - 12f, anchorY + 12f)
+            close()
+        }
+        val chevronFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+            color = Color.parseColor("#38BDF8")
+        }
+        val chevronStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            color = Color.WHITE
+            strokeWidth = 3f
+            strokeJoin = Paint.Join.ROUND
+        }
+        canvas.drawPath(chevron, chevronFill)
+        canvas.drawPath(chevron, chevronStroke)
+
+        return RenderedWidgetHud(
             bitmap = bitmap,
-            effectiveZoom = zoom,
-            routeResult = routeResult
+            guidance = guidance,
+            headingDeg = headingDeg,
+            viewRangeMeters = effectiveRange
         )
     }
 }

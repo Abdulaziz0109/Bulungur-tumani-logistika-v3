@@ -37,10 +37,12 @@ class LiveLocationService : Service() {
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
             WidgetDataFetcher.saveLastKnownFix(
-                applicationContext,
-                location.latitude,
-                location.longitude,
-                location.time
+                context = applicationContext,
+                lat = location.latitude,
+                lng = location.longitude,
+                timestampMs = location.time,
+                bearingDeg = if (location.hasBearing()) location.bearing else null,
+                speedMps = if (location.hasSpeed()) location.speed else null
             )
             val intent = Intent(applicationContext, MmtbWidgetProvider::class.java).apply {
                 action = MmtbWidgetProvider.ACTION_PASSIVE_LOCATION
@@ -112,8 +114,8 @@ class LiveLocationService : Service() {
                 if (lm.isProviderEnabled(provider)) {
                     lm.requestLocationUpdates(
                         provider,
-                        10_000L, // every 10 seconds while moving
-                        30f,     // >= 30 meters movement
+                        4_000L, // every 4 seconds while moving (pure vector HUD = <8ms, 0 tile data)
+                        10f,    // >= 10 meters movement for live turn-by-turn meter countdown
                         locationListener,
                         Looper.getMainLooper()
                     )

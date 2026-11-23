@@ -3,7 +3,6 @@ package uz.bulungur.mmtb
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.DashPathEffect
@@ -11,6 +10,10 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -23,38 +26,59 @@ import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
 import android.widget.FrameLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
-import kotlin.math.floor
+import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
- * Instant native floating interactive map popup opened by tapping the widget's mini-map.
- * Supports smooth 2-finger pinch-to-zoom, 1-finger drag/pan in any direction, marker tapping,
- * category switching (Barchasi / Maktab / Bog'cha), and real-time GPS route auto-tracking.
+ * Ultra-fast 60 FPS Pure Vector Heading-Up Turn-by-Turn Floating HUD.
+ * Zero map tile downloads: opens instantaneously, rotates smoothly with phone compass & GPS bearing,
+ * shows exact meters to the next turn, and displays a bottom total-distance progress line.
  */
-class FloatingMapActivity : AppCompatActivity() {
+class FloatingMapActivity : AppCompatActivity(), SensorEventListener {
+
+    companion object {
+        const val EXTRA_TARGET_ID = "extra_target_id"
+    }
 
     private lateinit var tvTitle: TextView
     private lateinit var tvSubtitle: TextView
+    private lateinit var btnRotate: TextView
     private lateinit var pillAll: TextView
     private lateinit var pillMaktab: TextView
     private lateinit var pillDmtt: TextView
-    private lateinit var btnProviderGoogle: TextView
-    private lateinit var btnProviderYandex: TextView
-    private lateinit var mapView: InteractiveMapView
 
-    private val bgExecutor = Executors.newFixedThreadPool(6)
+    private lateinit var tvTurnArrow: TextView
+    private lateinit var tvTurnDist: TextView
+    private lateinit var tvTurnText: TextView
+    private lateinit var tvTurnNext: TextView
+
+    private lateinit var tvTotalLeft: TextView
+    private lateinit var tvTotalRight: TextView
+    private lateinit var pbRouteProgress: ProgressBar
+
+    private lateinit var hudView: InteractiveVectorHudView
+
+    private val bgExecutor = Executors.newSingleThreadExecutor()
     private var locationManager: LocationManager? = null
+    private var sensorManager: SensorManager? = null
+    private var rotationSensor: Sensor? = null
 
     private var activeFilter: String = "all"
-    private var activeProvider: String = WidgetDataFetcher.MAP_PROVIDER_GOOGLE
+    private var headingUpEnabled: Boolean = true
+    private var lastGpsBearingDeg: Double? = null
+    private var lastGpsSpeedMps: Float = 0f
+    private var lastGpsTimeMs: Long = 0L
+    private var smoothedCompassDeg: Double? = null
+
     private var snapshot: WidgetSnapshot = WidgetSnapshot(
         locations = emptyList(),
         totalMaktab = 0,
@@ -65,17 +89,30 @@ class FloatingMapActivity : AppCompatActivity() {
     )
     private var activeTarget: MmtbLocation? = null
     private var activeRoute: RoutePathResult? = null
+    private var activeGuidance: TurnGuidance? = null
     private var userManuallySelectedTarget = false
+
+    private val rotationMatrix = FloatArray(9)
+    private val orientationAngles = FloatArray(3)
 
     private val liveListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
+            val bearing = if (location.hasBearing()) location.bearing else null
+            val speed = if (location.hasSpeed()) location.speed else 0f
             WidgetDataFetcher.saveLastKnownFix(
-                applicationContext,
-                location.latitude,
-                location.longitude,
-                location.time
+                context = applicationContext,
+                lat = location.latitude,
+                lng = location.longitude,
+                timestampMs = location.time,
+                bearingDeg = bearing,
+                speedMps = speed
             )
-            refreshSnapshotAndRoute(recenter = false)
+            lastGpsSpeedMps = speed
+            lastGpsTimeMs = System.currentTimeMillis()
+            if (bearing != null && speed >= 1.2f) {
+                lastGpsBearingDeg = ((bearing.toDouble() % 360.0) + 360.0) % 360.0
+            }
+            refreshSnapshotAndRoute(resetPan = false)
         }
 
         override fun onProviderEnabled(provider: String) {}
@@ -88,11 +125,19 @@ class FloatingMapActivity : AppCompatActivity() {
 
         tvTitle = findViewById(R.id.tv_fmap_title)
         tvSubtitle = findViewById(R.id.tv_fmap_subtitle)
+        btnRotate = findViewById(R.id.btn_fmap_rotate)
         pillAll = findViewById(R.id.fmap_pill_all)
         pillMaktab = findViewById(R.id.fmap_pill_maktab)
         pillDmtt = findViewById(R.id.fmap_pill_dmtt)
-        btnProviderGoogle = findViewById(R.id.fmap_provider_google)
-        btnProviderYandex = findViewById(R.id.fmap_provider_yandex)
+
+        tvTurnArrow = findViewById(R.id.tv_fmap_turn_arrow)
+        tvTurnDist = findViewById(R.id.tv_fmap_turn_dist)
+        tvTurnText = findViewById(R.id.tv_fmap_turn_text)
+        tvTurnNext = findViewById(R.id.tv_fmap_turn_next)
+
+        tvTotalLeft = findViewById(R.id.tv_fmap_total_left)
+        tvTotalRight = findViewById(R.id.tv_fmap_total_right)
+        pbRouteProgress = findViewById(R.id.pb_fmap_route_progress)
 
         findViewById<View>(R.id.floating_map_backdrop).setOnClickListener {
             finish()
@@ -103,30 +148,37 @@ class FloatingMapActivity : AppCompatActivity() {
             overridePendingTransition(0, 0)
         }
 
-        mapView = InteractiveMapView(this) { tappedLocation ->
+        hudView = InteractiveVectorHudView(this) { tappedLocation ->
             userManuallySelectedTarget = true
             activeTarget = tappedLocation
-            updateHeaderText()
-            loadRouteForActiveTarget(recenter = false)
+            activeRoute = null
+            recomputeGuidanceLocally()
+            updateUiText()
+            loadRouteForActiveTarget(resetPan = true)
         }
-        // Insert at index 0 so the floating Google/Yandex pill stays cleanly on top of the canvas
         findViewById<FrameLayout>(R.id.fmap_canvas_holder).addView(
-            mapView,
-            0,
+            hudView,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
         )
 
+        btnRotate.setOnClickListener {
+            headingUpEnabled = !headingUpEnabled
+            updateRotateButton()
+            pushHeadingToHud()
+        }
+
         pillAll.setOnClickListener { switchFilter("all") }
         pillMaktab.setOnClickListener { switchFilter("maktab") }
         pillDmtt.setOnClickListener { switchFilter("dmtt") }
-        btnProviderGoogle.setOnClickListener { switchMapProvider(WidgetDataFetcher.MAP_PROVIDER_GOOGLE) }
-        btnProviderYandex.setOnClickListener { switchMapProvider(WidgetDataFetcher.MAP_PROVIDER_YANDEX) }
 
         findViewById<View>(R.id.btn_fmap_recenter).setOnClickListener {
             userManuallySelectedTarget = false
+            headingUpEnabled = true
+            updateRotateButton()
+            hudView.resetCamera()
             pickNearestAndRecenter()
         }
         findViewById<View>(R.id.btn_fmap_yandex).setOnClickListener {
@@ -146,22 +198,102 @@ class FloatingMapActivity : AppCompatActivity() {
         }
 
         activeFilter = WidgetDataFetcher.getSavedFilter(this)
-        activeProvider = WidgetDataFetcher.getMapProvider(this)
-        mapView.setMapProvider(activeProvider)
+        val requestedTargetId = intent?.getStringExtra(EXTRA_TARGET_ID)
+        snapshot = WidgetDataFetcher.loadCachedSnapshotFast(this)
+        if (!requestedTargetId.isNullOrBlank()) {
+            val found = snapshot.locations.firstOrNull { it.id == requestedTargetId }
+            if (found != null) {
+                userManuallySelectedTarget = true
+                activeTarget = found
+            }
+        }
+
         updateFilterPills()
-        updateProviderPills()
-        refreshSnapshotAndRoute(recenter = true)
+        updateRotateButton()
+        refreshSnapshotAndRoute(resetPan = true)
         startForegroundGps()
+        initCompassSensor()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        rotationSensor?.let { sensor ->
+            sensorManager?.registerListener(this, sensor, SensorManager.SENSOR_DELAY_UI)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        sensorManager?.unregisterListener(this)
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        sensorManager?.unregisterListener(this)
         try {
             locationManager?.removeUpdates(liveListener)
         } catch (_: Exception) {
             // Ignore
         }
         bgExecutor.shutdownNow()
+    }
+
+    private fun initCompassSensor() {
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        rotationSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+    }
+
+    override fun onSensorChanged(event: SensorEvent) {
+        if (event.sensor.type != Sensor.TYPE_ROTATION_VECTOR) return
+        SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+        SensorManager.getOrientation(rotationMatrix, orientationAngles)
+        val rawDeg = ((Math.toDegrees(orientationAngles[0].toDouble()) % 360.0) + 360.0) % 360.0
+        val prev = smoothedCompassDeg
+        smoothedCompassDeg = if (prev == null) {
+            rawDeg
+        } else {
+            lerpAngleDeg(prev, rawDeg, 0.16)
+        }
+        if (headingUpEnabled) {
+            pushHeadingToHud()
+        }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+    private fun lerpAngleDeg(from: Double, to: Double, factor: Double): Double {
+        var delta = ((to - from + 540.0) % 360.0) - 180.0
+        if (abs(delta) < 0.8) return from
+        delta *= factor
+        return ((from + delta) % 360.0 + 360.0) % 360.0
+    }
+
+    private fun resolveActiveHeadingDeg(): Double {
+        if (!headingUpEnabled) return 0.0
+        val now = System.currentTimeMillis()
+        // When driving/moving fast (> 1.4 m/s), GPS bearing is rock-solid and immune to car metal interference
+        val gpsHeading = lastGpsBearingDeg
+        if (gpsHeading != null && lastGpsSpeedMps >= 1.4f && (now - lastGpsTimeMs) < 15_000L) {
+            return gpsHeading
+        }
+        // When walking or holding phone, hardware compass smoothly rotates the schematic to match where phone points!
+        smoothedCompassDeg?.let { return it }
+        // Fallback: orient road straight ahead to top of screen
+        return activeGuidance?.roadHeadingDeg ?: 0.0
+    }
+
+    private fun pushHeadingToHud() {
+        hudView.setHeading(resolveActiveHeadingDeg())
+    }
+
+    private fun updateRotateButton() {
+        if (headingUpEnabled) {
+            btnRotate.text = "🧭 Aylanish"
+            btnRotate.setBackgroundResource(R.drawable.widget_pill_active)
+        } else {
+            btnRotate.text = "⬆ Shimol"
+            btnRotate.setBackgroundResource(R.drawable.widget_pill_bg)
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -179,7 +311,7 @@ class FloatingMapActivity : AppCompatActivity() {
             LocationManager.NETWORK_PROVIDER
         }
         try {
-            lm.requestLocationUpdates(provider, 5_000L, 10f, liveListener, Looper.getMainLooper())
+            lm.requestLocationUpdates(provider, 2_000L, 4f, liveListener, Looper.getMainLooper())
         } catch (_: Exception) {
             // Ignore
         }
@@ -192,7 +324,6 @@ class FloatingMapActivity : AppCompatActivity() {
         updateFilterPills()
         pickNearestAndRecenter()
 
-        // Keep widget filter in sync
         val intent = Intent(this, MmtbWidgetProvider::class.java).apply {
             action = MmtbWidgetProvider.ACTION_SET_FILTER
             putExtra(MmtbWidgetProvider.EXTRA_FILTER, filter)
@@ -212,36 +343,6 @@ class FloatingMapActivity : AppCompatActivity() {
         )
     }
 
-    private fun switchMapProvider(provider: String) {
-        if (activeProvider == provider) return
-        activeProvider = provider
-        WidgetDataFetcher.setMapProvider(this, provider)
-        updateProviderPills()
-        mapView.setMapProvider(provider)
-
-        // Immediately sync the Home Screen Widget map style too
-        val intent = Intent(this, MmtbWidgetProvider::class.java).apply {
-            action = MmtbWidgetProvider.ACTION_SET_MAP_PROVIDER
-            putExtra(MmtbWidgetProvider.EXTRA_MAP_PROVIDER, provider)
-        }
-        sendBroadcast(intent)
-    }
-
-    private fun updateProviderPills() {
-        val isYandex = activeProvider == WidgetDataFetcher.MAP_PROVIDER_YANDEX
-        if (isYandex) {
-            btnProviderGoogle.background = null
-            btnProviderGoogle.setTextColor(Color.parseColor("#CBD5E1"))
-            btnProviderYandex.setBackgroundResource(R.drawable.widget_btn_yandex)
-            btnProviderYandex.setTextColor(Color.WHITE)
-        } else {
-            btnProviderGoogle.setBackgroundResource(R.drawable.widget_btn_google)
-            btnProviderGoogle.setTextColor(Color.WHITE)
-            btnProviderYandex.background = null
-            btnProviderYandex.setTextColor(Color.parseColor("#CBD5E1"))
-        }
-    }
-
     private fun filteredLocations(): List<MmtbLocation> {
         return snapshot.locations.filter { loc ->
             when (activeFilter) {
@@ -252,7 +353,7 @@ class FloatingMapActivity : AppCompatActivity() {
         }
     }
 
-    private fun refreshSnapshotAndRoute(recenter: Boolean) {
+    private fun refreshSnapshotAndRoute(resetPan: Boolean) {
         snapshot = WidgetDataFetcher.loadCachedSnapshotFast(this)
         val filtered = filteredLocations()
         if (!userManuallySelectedTarget || activeTarget == null) {
@@ -261,62 +362,114 @@ class FloatingMapActivity : AppCompatActivity() {
             val currentId = activeTarget?.id
             activeTarget = snapshot.locations.firstOrNull { it.id == currentId } ?: filtered.firstOrNull()
         }
-        mapView.setData(snapshot, filtered, activeTarget, activeRoute)
-        if (recenter && activeTarget != null) {
-            mapView.frameRoute(
-                listOf(
-                    Pair(snapshot.refLat, snapshot.refLng),
-                    Pair(activeTarget!!.lat, activeTarget!!.lng)
-                )
-            )
-        }
-        updateHeaderText()
-        loadRouteForActiveTarget(recenter = recenter)
+        recomputeGuidanceLocally()
+        if (resetPan) hudView.resetCamera()
+        hudView.setData(snapshot, filtered, activeTarget, activeGuidance)
+        pushHeadingToHud()
+        updateUiText()
+        loadRouteForActiveTarget(resetPan = resetPan)
     }
 
     private fun pickNearestAndRecenter() {
         val filtered = filteredLocations()
         activeTarget = filtered.firstOrNull()
-        mapView.setData(snapshot, filtered, activeTarget, activeRoute)
-        if (activeTarget != null) {
-            mapView.frameRoute(
-                listOf(
-                    Pair(snapshot.refLat, snapshot.refLng),
-                    Pair(activeTarget!!.lat, activeTarget!!.lng)
-                )
-            )
-        }
-        updateHeaderText()
-        loadRouteForActiveTarget(recenter = true)
+        activeRoute = null
+        recomputeGuidanceLocally()
+        hudView.resetCamera()
+        hudView.setData(snapshot, filtered, activeTarget, activeGuidance)
+        pushHeadingToHud()
+        updateUiText()
+        loadRouteForActiveTarget(resetPan = true)
     }
 
-    private fun updateHeaderText() {
+    private fun recomputeGuidanceLocally() {
         val target = activeTarget
-        if (target != null) {
-            val roadKm = activeRoute?.takeIf { it.isRoadRoute && it.distanceMeters > 0 }?.let {
-                it.distanceMeters / 1000.0
-            } ?: target.distKm
-            val etaMin = activeRoute?.takeIf { it.isRoadRoute && it.durationSeconds > 0 }?.let {
-                max(1, (it.durationSeconds / 60.0).toInt())
-            }
+        if (target == null) {
+            activeGuidance = null
+            return
+        }
+        val existingRoute = activeRoute?.takeIf { it.destId == target.id }
+        val routeToUse = existingRoute ?: RoutePathResult(
+            destId = target.id,
+            points = listOf(Pair(snapshot.refLat, snapshot.refLng), Pair(target.lat, target.lng)),
+            cumDistMeters = doubleArrayOf(0.0, target.distKm * 1000.0),
+            steps = listOf(
+                RouteStep(
+                    maneuverType = "arrive",
+                    modifier = "straight",
+                    lat = target.lat,
+                    lng = target.lng,
+                    alongMeters = target.distKm * 1000.0,
+                    segmentDistMeters = 0.0,
+                    streetName = ""
+                )
+            ),
+            totalDistanceMeters = target.distKm * 1000.0,
+            totalDurationSeconds = (target.distKm * 1000.0) / 9.0,
+            isRoadRoute = false
+        )
+        activeGuidance = WidgetMapRenderer.computeLiveGuidance(
+            route = routeToUse,
+            userLat = snapshot.refLat,
+            userLng = snapshot.refLng,
+            destLat = target.lat,
+            destLng = target.lng,
+            destName = target.name
+        )
+    }
+
+    private fun updateUiText() {
+        val target = activeTarget
+        val g = activeGuidance
+        if (target != null && g != null) {
             tvTitle.text = target.name
-            tvSubtitle.text = if (etaMin != null) {
-                String.format(Locale.US, "%.1f km · ~%d daq · Surish va zoom faol", roadKm, etaMin)
+            tvSubtitle.text = if (headingUpEnabled) {
+                "Yo'nalish bo'yicha aylanadi · Chimchilab kattalashtiring"
             } else {
-                String.format(Locale.US, "%.1f km · Surish va zoom faol", roadKm)
+                "Shimol yuqorida · Barmoq bilan suring"
             }
+
+            // Prominent Turn-by-Turn Card
+            tvTurnArrow.text = g.arrow
+            tvTurnDist.text = if (g.isArrived) "Yetdingiz" else WidgetMapRenderer.formatDistanceUz(g.distanceToTurnMeters)
+            tvTurnText.text = g.fullInstructionUz
+            tvTurnNext.text = when {
+                g.isArrived -> target.mahalla.ifBlank { "Manzil yonidasiz" }
+                !g.nextTurnPreview.isNullOrBlank() -> g.nextTurnPreview
+                g.streetName.isNotBlank() -> g.streetName
+                else -> "Keyingi burilishgacha to'g'riga yuring"
+            }
+
+            // Bottom Total Distance Progress Line (Expanded Widget Only)
+            val totalStr = WidgetMapRenderer.formatDistanceUz(g.totalDistanceMeters)
+            val remStr = WidgetMapRenderer.formatDistanceUz(g.remainingTotalMeters)
+            val etaMin = max(1, (g.remainingDurationSeconds / 60.0).roundToInt())
+            tvTotalLeft.text = if (g.isRoadRoute) {
+                "Jami: $totalStr · ~$etaMin daq"
+            } else {
+                "Jami: $totalStr"
+            }
+            tvTotalRight.text = "Qoldi: $remStr"
+            pbRouteProgress.progress = (g.progressFraction * 1000f).roundToInt().coerceIn(0, 1000)
         } else {
             tvTitle.text = "Bulung'ur MMTB"
-            tvSubtitle.text = "Barmoq bilan suring yoki kattalashtiring"
+            tvSubtitle.text = "Muassasa tanlang"
+            tvTurnArrow.text = "◎"
+            tvTurnDist.text = "--"
+            tvTurnText.text = "Yaqin muassasa topilmadi"
+            tvTurnNext.text = ""
+            tvTotalLeft.text = "Jami masofa: --"
+            tvTotalRight.text = "Qoldi: --"
+            pbRouteProgress.progress = 0
         }
     }
 
-    private fun loadRouteForActiveTarget(recenter: Boolean) {
+    private fun loadRouteForActiveTarget(resetPan: Boolean) {
         val target = activeTarget ?: return
         val originLat = snapshot.refLat
         val originLng = snapshot.refLng
         bgExecutor.execute {
-            val route = WidgetMapRenderer.fetchRoadRoute(
+            val route = WidgetMapRenderer.fetchRoadRouteWithSteps(
                 fromLat = originLat,
                 fromLng = originLng,
                 destLat = target.lat,
@@ -326,14 +479,20 @@ class FloatingMapActivity : AppCompatActivity() {
             )
             if (!isFinishing && !isDestroyed) {
                 runOnUiThread {
+                    if (activeTarget?.id != target.id) return@runOnUiThread
                     activeRoute = route
-                    mapView.setData(snapshot, filteredLocations(), activeTarget, route)
-                    if (recenter) {
-                        mapView.frameRoute(
-                            route.points + Pair(originLat, originLng) + Pair(target.lat, target.lng)
-                        )
-                    }
-                    updateHeaderText()
+                    activeGuidance = WidgetMapRenderer.computeLiveGuidance(
+                        route = route,
+                        userLat = snapshot.refLat,
+                        userLng = snapshot.refLng,
+                        destLat = target.lat,
+                        destLng = target.lng,
+                        destName = target.name
+                    )
+                    if (resetPan) hudView.autoFitScale(activeGuidance)
+                    hudView.setData(snapshot, filteredLocations(), activeTarget, activeGuidance)
+                    pushHeadingToHud()
+                    updateUiText()
                 }
             }
         }
@@ -351,68 +510,101 @@ class FloatingMapActivity : AppCompatActivity() {
     }
 
     /**
-     * Native touch-interactive map view with 2-finger pinch-zoom, 1-finger panning,
-     * double-tap zoom, and marker tap selection using the shared disk tile cache.
+     * 60 FPS Pure Vector Heading-Up Interactive HUD Canvas.
+     * Zero tile loading, instant pinch-to-zoom, smooth compass/GPS rotation, clickable nearby markers.
      */
-    private inner class InteractiveMapView(
+    private inner class InteractiveVectorHudView(
         context: Context,
         private val onMarkerTapped: (MmtbLocation) -> Unit
     ) : View(context) {
 
-        private var centerLat = 39.7647
-        private var centerLng = 67.2714
-        private var zoom = 14.0
-        private var mapProvider = WidgetDataFetcher.MAP_PROVIDER_GOOGLE
-
         private var snap: WidgetSnapshot? = null
         private var markers: List<MmtbLocation> = emptyList()
         private var target: MmtbLocation? = null
-        private var route: RoutePathResult? = null
-        private var pendingFramePoints: List<Pair<Double, Double>>? = null
+        private var guidance: TurnGuidance? = null
 
-        private val memTiles = ConcurrentHashMap<String, Bitmap>()
-        private val loadingTiles = ConcurrentHashMap.newKeySet<String>()
+        private var headingDeg: Double = 0.0
+        private var viewRangeMeters: Double = 900.0
+        private var userZoomedManually = false
+        private var panOffsetRightPx: Float = 0f
+        private var panOffsetDownPx: Float = 0f
 
-        private val tilePaint = Paint(Paint.FILTER_BITMAP_FLAG)
-        private val gridPaint = Paint().apply {
-            color = Color.parseColor("#CBD5E1")
-            strokeWidth = 1f
-        }
-        private val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            color = Color.WHITE
-            strokeWidth = 12f
+            color = Color.parseColor("#1E293B")
+            strokeWidth = 2f
+        }
+        private val axisPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#17253B")
+            strokeWidth = 1.5f
+            pathEffect = DashPathEffect(floatArrayOf(10f, 10f), 0f)
+        }
+        private val ringLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#64748B")
+            textSize = 20f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        private val passedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            color = Color.parseColor("#475569")
+            strokeWidth = 6f
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+            pathEffect = DashPathEffect(floatArrayOf(12f, 12f), 0f)
+        }
+        private val routeGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            color = Color.parseColor("#380EA5E9")
+            strokeWidth = 28f
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
         }
-        private val routePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        private val routeCorePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            color = Color.parseColor("#0284C7")
-            strokeWidth = 7f
+            color = Color.parseColor("#38BDF8")
+            strokeWidth = 11f
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
         }
-        private val markerFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
-        private val markerStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        private val routeInnerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            color = Color.parseColor("#E0F2FE")
+            strokeWidth = 3f
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+        private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+        private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             color = Color.WHITE
             strokeWidth = 3f
         }
-        private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        private val turnCalloutText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#FEF3C7")
+            textSize = 22f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        private val destLabelText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
-            textSize = 24f
+            textSize = 22f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
         private val pillBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#DD0F172A")
+            color = Color.parseColor("#E60F172A")
+        }
+        private val northTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#E2E8F0")
+            textSize = 18f
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
 
         private val scaleDetector = ScaleGestureDetector(
             context,
             object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
                 override fun onScale(detector: ScaleGestureDetector): Boolean {
-                    val delta = kotlin.math.ln(detector.scaleFactor.toDouble()) / kotlin.math.ln(2.0)
-                    zoom = (zoom + delta).coerceIn(10.0, 17.8)
+                    userZoomedManually = true
+                    viewRangeMeters = (viewRangeMeters / detector.scaleFactor).coerceIn(120.0, 14_000.0)
                     invalidate()
                     return true
                 }
@@ -430,21 +622,15 @@ class FloatingMapActivity : AppCompatActivity() {
                     distanceX: Float,
                     distanceY: Float
                 ): Boolean {
-                    val cWorld = WidgetMapRenderer.latLngToWorldPixel(centerLat, centerLng, zoom, mapProvider)
-                    val next = WidgetMapRenderer.worldPixelToLatLng(
-                        cWorld.first + distanceX,
-                        cWorld.second + distanceY,
-                        zoom,
-                        mapProvider
-                    )
-                    centerLat = next.first.coerceIn(-85.0, 85.0)
-                    centerLng = next.second.coerceIn(-180.0, 180.0)
+                    panOffsetRightPx -= distanceX
+                    panOffsetDownPx -= distanceY
                     invalidate()
                     return true
                 }
 
                 override fun onDoubleTap(e: MotionEvent): Boolean {
-                    zoom = (zoom + 1.0).coerceAtMost(17.5)
+                    userZoomedManually = true
+                    viewRangeMeters = (viewRangeMeters * 0.65).coerceAtLeast(120.0)
                     invalidate()
                     return true
                 }
@@ -460,11 +646,28 @@ class FloatingMapActivity : AppCompatActivity() {
             }
         )
 
-        fun setMapProvider(provider: String) {
-            if (this.mapProvider != provider) {
-                this.mapProvider = provider
-                memTiles.clear()
-                loadingTiles.clear()
+        fun resetCamera() {
+            panOffsetRightPx = 0f
+            panOffsetDownPx = 0f
+            userZoomedManually = false
+            autoFitScale(guidance)
+            invalidate()
+        }
+
+        fun autoFitScale(g: TurnGuidance?) {
+            if (userZoomedManually || g == null) return
+            viewRangeMeters = when {
+                g.remainingTotalMeters <= 250.0 -> 280.0
+                g.distanceToTurnMeters <= 200.0 -> 360.0
+                g.distanceToTurnMeters <= 500.0 -> g.distanceToTurnMeters * 1.65
+                g.remainingTotalMeters <= 1600.0 -> g.remainingTotalMeters * 1.25
+                else -> min(g.distanceToTurnMeters * 1.55, 2500.0).coerceAtLeast(700.0)
+            }.coerceIn(160.0, 9000.0)
+        }
+
+        fun setHeading(deg: Double) {
+            if (abs(headingDeg - deg) >= 0.4) {
+                headingDeg = deg
                 invalidate()
             }
         }
@@ -473,62 +676,48 @@ class FloatingMapActivity : AppCompatActivity() {
             snapshot: WidgetSnapshot,
             visibleMarkers: List<MmtbLocation>,
             activeTarget: MmtbLocation?,
-            routeResult: RoutePathResult?
+            turnGuidance: TurnGuidance?
         ) {
             this.snap = snapshot
             this.markers = visibleMarkers
             this.target = activeTarget
-            this.route = routeResult
+            this.guidance = turnGuidance
+            if (!userZoomedManually) {
+                autoFitScale(turnGuidance)
+            }
             invalidate()
-        }
-
-        fun frameRoute(points: List<Pair<Double, Double>>) {
-            if (points.isEmpty()) return
-            if (width <= 0 || height <= 0) {
-                pendingFramePoints = points
-                return
-            }
-            var minLat = Double.MAX_VALUE
-            var maxLat = -Double.MAX_VALUE
-            var minLng = Double.MAX_VALUE
-            var maxLng = -Double.MAX_VALUE
-            for ((lat, lng) in points) {
-                minLat = min(minLat, lat)
-                maxLat = max(maxLat, lat)
-                minLng = min(minLng, lng)
-                maxLng = max(maxLng, lng)
-            }
-            centerLat = (minLat + maxLat) / 2.0
-            centerLng = (minLng + maxLng) / 2.0
-            zoom = WidgetMapRenderer.computeAutoZoom(points, width, height, mapProvider).toDouble()
-            invalidate()
-        }
-
-        override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-            super.onSizeChanged(w, h, oldw, oldh)
-            pendingFramePoints?.let { pts ->
-                pendingFramePoints = null
-                frameRoute(pts)
-            }
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
-            val scaled = scaleDetector.onTouchEvent(event)
-            val gestured = gestureDetector.onTouchEvent(event)
-            return scaled || gestured || super.onTouchEvent(event)
+            val s = scaleDetector.onTouchEvent(event)
+            val g = gestureDetector.onTouchEvent(event)
+            return s || g || super.onTouchEvent(event)
+        }
+
+        private fun anchorPoint(): Pair<Float, Float> {
+            return Pair(width * 0.5f + panOffsetRightPx, height * 0.74f + panOffsetDownPx)
+        }
+
+        private fun pxPerMeter(): Double {
+            val budget = max(120f, height * 0.60f)
+            return budget / viewRangeMeters
+        }
+
+        private fun toScreen(lat: Double, lng: Double): Pair<Float, Float> {
+            val s = snap ?: return Pair(width * 0.5f, height * 0.5f)
+            val (east, north) = WidgetMapRenderer.latLngToLocalMeters(lat, lng, s.refLat, s.refLng)
+            val (right, forward) = WidgetMapRenderer.rotateToHeadingUp(east, north, headingDeg)
+            val (ax, ay) = anchorPoint()
+            val ppm = pxPerMeter()
+            return Pair(ax + (right * ppm).toFloat(), ay - (forward * ppm).toFloat())
         }
 
         private fun findMarkerAt(tapX: Float, tapY: Float): MmtbLocation? {
-            if (width <= 0 || height <= 0) return null
-            val cWorld = WidgetMapRenderer.latLngToWorldPixel(centerLat, centerLng, zoom, mapProvider)
-            val ox = cWorld.first - width / 2.0
-            val oy = cWorld.second - height / 2.0
+            if (width <= 0 || height <= 0 || snap == null) return null
             var best: MmtbLocation? = null
-            var bestDist = 54f
+            var bestDist = 56f
             for (loc in markers) {
-                val wp = WidgetMapRenderer.latLngToWorldPixel(loc.lat, loc.lng, zoom, mapProvider)
-                val sx = (wp.first - ox).toFloat()
-                val sy = (wp.second - oy).toFloat()
+                val (sx, sy) = toScreen(loc.lat, loc.lng)
                 val d = hypot(sx - tapX, sy - tapY)
                 if (d < bestDist) {
                     bestDist = d
@@ -540,129 +729,156 @@ class FloatingMapActivity : AppCompatActivity() {
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
-            canvas.drawColor(Color.parseColor("#E2E8F0"))
+            canvas.drawColor(Color.parseColor("#0B1324"))
+            if (width <= 0 || height <= 0) return
 
-            val reqProvider = mapProvider
-            val tileZoom = floor(zoom).toInt().coerceIn(10, 17)
-            val scaleFactor = Math.pow(2.0, zoom - tileZoom).toFloat()
-            val scaledTilePx = 256.0 * scaleFactor
+            val (ax, ay) = anchorPoint()
+            val ppm = pxPerMeter()
 
-            val centerWorld = WidgetMapRenderer.latLngToWorldPixel(centerLat, centerLng, zoom, reqProvider)
-            val originWorldX = centerWorld.first - width / 2.0
-            val originWorldY = centerWorld.second - height / 2.0
-
-            val startTileX = floor(originWorldX / scaledTilePx).toInt()
-            val endTileX = floor((originWorldX + width) / scaledTilePx).toInt()
-            val startTileY = floor(originWorldY / scaledTilePx).toInt()
-            val endTileY = floor((originWorldY + height) / scaledTilePx).toInt()
-
-            val maxTile = 1 shl tileZoom
-            val dstRect = RectF()
-            for (tx in startTileX..endTileX) {
-                for (ty in startTileY..endTileY) {
-                    if (ty < 0 || ty >= maxTile) continue
-                    val wrappedX = ((tx % maxTile) + maxTile) % maxTile
-                    val key = "$reqProvider/$tileZoom/$wrappedX/$ty"
-                    val left = (tx * scaledTilePx - originWorldX).toFloat()
-                    val top = (ty * scaledTilePx - originWorldY).toFloat()
-                    dstRect.set(left, top, left + scaledTilePx.toFloat() + 1f, top + scaledTilePx.toFloat() + 1f)
-
-                    val bmp = memTiles[key]
-                    if (bmp != null && !bmp.isRecycled) {
-                        canvas.drawBitmap(bmp, null, dstRect, tilePaint)
-                    } else {
-                        canvas.drawRect(dstRect, gridPaint)
-                        if (loadingTiles.add(key)) {
-                            bgExecutor.execute {
-                                val loaded = WidgetMapRenderer.loadTileBitmap(
-                                    context.applicationContext,
-                                    tileZoom,
-                                    wrappedX,
-                                    ty,
-                                    provider = reqProvider,
-                                    allowNetwork = true
-                                )
-                                loadingTiles.remove(key)
-                                if (loaded != null && mapProvider == reqProvider) {
-                                    if (memTiles.size > 80) memTiles.clear()
-                                    memTiles[key] = loaded
-                                    postInvalidate()
-                                }
-                            }
-                        }
-                    }
+            // 1. Concentric Distance Rings + Forward Axis Line
+            for (frac in listOf(0.32, 0.65, 1.0, 1.4)) {
+                val rMeters = viewRangeMeters * frac
+                val rPx = (rMeters * ppm).toFloat()
+                canvas.drawCircle(ax, ay, rPx, ringPaint)
+                val ly = ay - rPx + 22f
+                if (ly in 28f..(height - 24f)) {
+                    canvas.drawText(WidgetMapRenderer.formatDistanceUz(rMeters), ax + 10f, ly, ringLabelPaint)
                 }
             }
+            canvas.drawLine(ax, 12f, ax, ay, axisPaint)
 
-            fun toScreen(lat: Double, lng: Double): Pair<Float, Float> {
-                val wp = WidgetMapRenderer.latLngToWorldPixel(lat, lng, zoom, reqProvider)
-                return Pair((wp.first - originWorldX).toFloat(), (wp.second - originWorldY).toFloat())
-            }
+            // 2. Rotating North Compass Badge (top-left)
+            val cx = 44f
+            val cy = 44f
+            fillPaint.color = Color.parseColor("#CC0F172A")
+            canvas.drawCircle(cx, cy, 26f, fillPaint)
+            strokePaint.color = Color.parseColor("#334155")
+            strokePaint.strokeWidth = 2.5f
+            canvas.drawCircle(cx, cy, 26f, strokePaint)
+            val (nr, nf) = WidgetMapRenderer.rotateToHeadingUp(0.0, 1.0, headingDeg)
+            fillPaint.color = Color.parseColor("#EF4444")
+            canvas.drawCircle(cx + (nr * 15.0).toFloat(), cy - (nf * 15.0).toFloat(), 5.5f, fillPaint)
+            canvas.drawText("N", cx, cy + 7f, northTextPaint)
 
-            // Draw road route
-            val r = route
-            if (r != null && r.points.size >= 2) {
-                val path = Path()
-                r.points.forEachIndexed { idx, (lat, lng) ->
-                    val (sx, sy) = toScreen(lat, lng)
-                    if (idx == 0) path.moveTo(sx, sy) else path.lineTo(sx, sy)
-                }
-                routePaint.color = if (r.isRoadRoute) Color.parseColor("#0284C7") else Color.parseColor("#F59E0B")
-                routePaint.pathEffect = if (r.isRoadRoute) null else DashPathEffect(floatArrayOf(14f, 10f), 0f)
-                canvas.drawPath(path, haloPaint)
-                canvas.drawPath(path, routePaint)
-            }
-
-            // Draw all visible markers
+            // 3. Nearby Facilities (tappable dots)
             val activeId = target?.id
+            strokePaint.color = Color.WHITE
+            strokePaint.strokeWidth = 2.5f
             for (loc in markers) {
                 if (loc.id == activeId) continue
                 val (sx, sy) = toScreen(loc.lat, loc.lng)
-                if (sx < -20f || sx > width + 20f || sy < -20f || sy > height + 20f) continue
-                markerFill.color = when (loc.type) {
-                    "maktab" -> Color.parseColor("#0EA5E9")
-                    "dmtt", "bogcha" -> Color.parseColor("#FB7185")
-                    else -> Color.parseColor("#10B981")
+                if (sx < -16f || sx > width + 16f || sy < -16f || sy > height + 16f) continue
+                fillPaint.color = when (loc.type) {
+                    "maktab" -> Color.parseColor("#7738BDF8")
+                    "dmtt", "bogcha" -> Color.parseColor("#77FB7185")
+                    else -> Color.parseColor("#7734D399")
                 }
-                canvas.drawCircle(sx, sy, 9f, markerFill)
-                canvas.drawCircle(sx, sy, 9f, markerStroke)
+                canvas.drawCircle(sx, sy, 8f, fillPaint)
+                canvas.drawCircle(sx, sy, 8f, strokePaint)
             }
 
-            // Draw User GPS dot
-            snap?.let { s ->
-                val (ux, uy) = toScreen(s.refLat, s.refLng)
-                markerFill.color = Color.parseColor("#442563EB")
-                canvas.drawCircle(ux, uy, 22f, markerFill)
-                markerFill.color = Color.WHITE
-                canvas.drawCircle(ux, uy, 12f, markerFill)
-                markerFill.color = Color.parseColor("#2563EB")
-                canvas.drawCircle(ux, uy, 8.5f, markerFill)
+            // 4. Route Polyline (Passed + Active Glowing Upcoming)
+            val g = guidance
+            if (g != null) {
+                if (g.passedPoints.size >= 2) {
+                    val pPath = Path()
+                    g.passedPoints.forEachIndexed { idx, (lat, lng) ->
+                        val (sx, sy) = toScreen(lat, lng)
+                        if (idx == 0) pPath.moveTo(sx, sy) else pPath.lineTo(sx, sy)
+                    }
+                    canvas.drawPath(pPath, passedPaint)
+                }
+
+                if (g.remainingPoints.size >= 2) {
+                    val rPath = Path()
+                    g.remainingPoints.forEachIndexed { idx, (lat, lng) ->
+                        val (sx, sy) = toScreen(lat, lng)
+                        if (idx == 0) rPath.moveTo(sx, sy) else rPath.lineTo(sx, sy)
+                    }
+                    routeGlowPaint.color = if (g.isRoadRoute) Color.parseColor("#380EA5E9") else Color.parseColor("#38F59E0B")
+                    routeCorePaint.color = if (g.isRoadRoute) Color.parseColor("#38BDF8") else Color.parseColor("#F59E0B")
+                    routeCorePaint.pathEffect = if (g.isRoadRoute) null else DashPathEffect(floatArrayOf(16f, 12f), 0f)
+                    canvas.drawPath(rPath, routeGlowPaint)
+                    canvas.drawPath(rPath, routeCorePaint)
+                    if (g.isRoadRoute) {
+                        canvas.drawPath(rPath, routeInnerPaint)
+                    }
+                }
+
+                // 5. Upcoming Turn Callout Badges directly on the bends (first 2 turns!)
+                for ((idx, pair) in g.upcomingTurns.take(2).withIndex()) {
+                    val (step, distMeters) = pair
+                    if (step.maneuverType == "arrive") continue
+                    val (tx, ty) = toScreen(step.lat, step.lng)
+                    if (tx !in 16f..(width - 16f) || ty !in 16f..(height - 16f)) continue
+
+                    val isPrimary = idx == 0
+                    val (arrowSym, _, _) = WidgetMapRenderer.maneuverVisual(step)
+                    fillPaint.color = if (isPrimary) Color.parseColor("#44F59E0B") else Color.parseColor("#3338BDF8")
+                    canvas.drawCircle(tx, ty, if (isPrimary) 20f else 13f, fillPaint)
+                    fillPaint.color = if (isPrimary) Color.parseColor("#F59E0B") else Color.parseColor("#38BDF8")
+                    canvas.drawCircle(tx, ty, if (isPrimary) 8f else 5.5f, fillPaint)
+
+                    val badge = "$arrowSym ${WidgetMapRenderer.formatDistanceUz(distMeters)}"
+                    val tw = turnCalloutText.measureText(badge)
+                    val bw = tw + 24f
+                    val bh = 34f
+                    val bx = (tx + 16f).coerceIn(10f, max(10f, width - bw - 10f))
+                    val by = (ty - bh / 2f).coerceIn(10f, max(10f, height - bh - 10f))
+                    val rect = RectF(bx, by, bx + bw, by + bh)
+                    canvas.drawRoundRect(rect, 14f, 14f, pillBgPaint)
+                    strokePaint.color = if (isPrimary) Color.parseColor("#F59E0B") else Color.parseColor("#38BDF8")
+                    strokePaint.strokeWidth = 2.5f
+                    canvas.drawRoundRect(rect, 14f, 14f, strokePaint)
+                    canvas.drawText(badge, bx + 12f, by + 24f, turnCalloutText)
+                }
             }
 
-            // Draw Active Target pin + label
+            // 6. Active Destination Pin + Name Badge
             target?.let { dest ->
-                val (dx, dy) = toScreen(dest.lat, dest.lng)
+                val (rawDx, rawDy) = toScreen(dest.lat, dest.lng)
+                val dx = rawDx.coerceIn(22f, width - 22f)
+                val dy = rawDy.coerceIn(26f, height - 26f)
                 val pinColor = when (dest.type) {
                     "maktab" -> Color.parseColor("#0EA5E9")
                     "dmtt", "bogcha" -> Color.parseColor("#EF4444")
                     else -> Color.parseColor("#10B981")
                 }
-                markerFill.color = Color.WHITE
-                canvas.drawCircle(dx, dy, 16f, markerFill)
-                markerFill.color = pinColor
-                canvas.drawCircle(dx, dy, 12f, markerFill)
-                markerFill.color = Color.WHITE
-                canvas.drawCircle(dx, dy, 4.5f, markerFill)
+                fillPaint.color = Color.WHITE
+                canvas.drawCircle(dx, dy, 15f, fillPaint)
+                fillPaint.color = pinColor
+                canvas.drawCircle(dx, dy, 11.5f, fillPaint)
+                fillPaint.color = Color.WHITE
+                canvas.drawCircle(dx, dy, 4f, fillPaint)
 
-                val textW = labelPaint.measureText(dest.name)
-                val padX = 16f
-                val boxW = textW + padX * 2
-                val boxH = 38f
-                val left = (dx - boxW / 2f).coerceIn(10f, max(10f, width - boxW - 10f))
-                val top = (dy - 22f - boxH).coerceIn(10f, max(10f, height - boxH - 10f))
-                canvas.drawRoundRect(RectF(left, top, left + boxW, top + boxH), 16f, 16f, pillBgPaint)
-                canvas.drawText(dest.name, left + padX, top + 26f, labelPaint)
+                val tw = destLabelText.measureText(dest.name)
+                val bw = tw + 26f
+                val bh = 36f
+                val bx = (dx - bw / 2f).coerceIn(10f, max(10f, width - bw - 10f))
+                val by = (dy - 20f - bh).coerceIn(10f, max(10f, height - bh - 10f))
+                val rect = RectF(bx, by, bx + bw, by + bh)
+                canvas.drawRoundRect(rect, 15f, 15f, pillBgPaint)
+                strokePaint.color = pinColor
+                strokePaint.strokeWidth = 2.5f
+                canvas.drawRoundRect(rect, 15f, 15f, strokePaint)
+                canvas.drawText(dest.name, bx + 13f, by + 25f, destLabelText)
             }
+
+            // 7. User Directional Chevron (Points straight UP when Heading-Up is active!)
+            fillPaint.color = Color.parseColor("#3838BDF8")
+            canvas.drawCircle(ax, ay, 30f, fillPaint)
+            val chevron = Path().apply {
+                moveTo(ax, ay - 20f)
+                lineTo(ax + 15f, ay + 15f)
+                lineTo(ax, ay + 6f)
+                lineTo(ax - 15f, ay + 15f)
+                close()
+            }
+            fillPaint.color = Color.parseColor("#38BDF8")
+            canvas.drawPath(chevron, fillPaint)
+            strokePaint.color = Color.WHITE
+            strokePaint.strokeWidth = 3.5f
+            canvas.drawPath(chevron, strokePaint)
         }
     }
 }

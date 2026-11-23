@@ -6,7 +6,7 @@
     android:orientation="vertical"
     android:padding="10dp">
 
-    <!-- Compact Top Bar: Title + Live GPS Toggle + Refresh + Full Map -->
+    <!-- Top Bar: Xarita / Ro'yxat (Active) Tabs + Live GPS + Refresh + App -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -14,15 +14,36 @@
         android:orientation="horizontal">
 
         <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:text="@string/widget_title"
-            android:textColor="#FFFFFF"
-            android:textSize="13sp"
+            android:id="@+id/btn_tab_map"
+            android:layout_width="wrap_content"
+            android:layout_height="26dp"
+            android:background="@drawable/widget_pill_bg"
+            android:gravity="center"
+            android:paddingStart="9dp"
+            android:paddingEnd="9dp"
+            android:text="🧭 Xarita"
+            android:textColor="#CBD5E1"
+            android:textSize="10sp"
             android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/btn_tab_list"
+            android:layout_width="wrap_content"
+            android:layout_height="26dp"
+            android:layout_marginStart="4dp"
+            android:background="@drawable/widget_pill_active"
+            android:gravity="center"
+            android:paddingStart="9dp"
+            android:paddingEnd="9dp"
+            android:text="📋 Ro&apos;yxat"
+            android:textColor="#FFFFFF"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
 
         <TextView
             android:id="@+id/btn_toggle_live"
@@ -30,8 +51,8 @@
             android:layout_height="24dp"
             android:background="@drawable/widget_pill_bg"
             android:gravity="center"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
+            android:paddingStart="7dp"
+            android:paddingEnd="7dp"
             android:text="○ Jonli"
             android:textColor="#FFFFFF"
             android:textSize="10sp"
@@ -41,7 +62,7 @@
             android:id="@+id/btn_refresh"
             android:layout_width="24dp"
             android:layout_height="24dp"
-            android:layout_marginStart="5dp"
+            android:layout_marginStart="4dp"
             android:background="@drawable/widget_pill_bg"
             android:gravity="center"
             android:text="↻"
@@ -51,91 +72,14 @@
 
         <TextView
             android:id="@+id/card_open_map"
-            android:layout_width="wrap_content"
+            android:layout_width="26dp"
             android:layout_height="24dp"
-            android:layout_marginStart="5dp"
+            android:layout_marginStart="4dp"
             android:background="@drawable/widget_map_card_bg"
             android:gravity="center"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
-            android:text="📍 Ilova"
+            android:text="📍"
             android:textColor="#FFFFFF"
-            android:textSize="10sp"
-            android:textStyle="bold" />
-    </LinearLayout>
-
-    <!-- Nearest Hero Info + Direct Yandex / Google Buttons -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="5dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
-
-        <TextView
-            android:id="@+id/tv_hero_dist"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="0.3 km"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="7dp"
-            android:layout_marginEnd="6dp"
-            android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/tv_hero_name"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:text="Yuklanmoqda..."
-                android:textColor="#FFFFFF"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/tv_subtitle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:text="Eng yaqin muassasa"
-                android:textColor="#BAE6FD"
-                android:textSize="9sp" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/btn_hero_yandex"
-            android:layout_width="wrap_content"
-            android:layout_height="26dp"
-            android:background="@drawable/widget_btn_yandex"
-            android:gravity="center"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
-            android:text="Yandex"
-            android:textColor="#FFFFFF"
-            android:textSize="10sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/btn_hero_google"
-            android:layout_width="wrap_content"
-            android:layout_height="26dp"
-            android:layout_marginStart="4dp"
-            android:background="@drawable/widget_btn_google"
-            android:gravity="center"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
-            android:text="Google"
-            android:textColor="#FFFFFF"
-            android:textSize="10sp"
+            android:textSize="11sp"
             android:textStyle="bold" />
     </LinearLayout>
 
@@ -150,14 +94,14 @@
         <TextView
             android:id="@+id/btn_quick_search"
             android:layout_width="0dp"
-            android:layout_height="28dp"
-            android:layout_weight="1.25"
+            android:layout_height="26dp"
+            android:layout_weight="1.15"
             android:background="@drawable/widget_pill_bg"
             android:ellipsize="end"
             android:gravity="center_vertical"
             android:maxLines="1"
-            android:paddingStart="8dp"
-            android:paddingEnd="6dp"
+            android:paddingStart="7dp"
+            android:paddingEnd="5dp"
             android:text="🔍 Qidiruv"
             android:textColor="#E2E8F0"
             android:textSize="10sp"
@@ -166,9 +110,9 @@
         <TextView
             android:id="@+id/btn_filter_all"
             android:layout_width="0dp"
-            android:layout_height="28dp"
+            android:layout_height="26dp"
             android:layout_marginStart="4dp"
-            android:layout_weight="0.88"
+            android:layout_weight="0.9"
             android:background="@drawable/widget_pill_active"
             android:gravity="center"
             android:maxLines="1"
@@ -180,7 +124,7 @@
         <TextView
             android:id="@+id/btn_filter_maktab"
             android:layout_width="0dp"
-            android:layout_height="28dp"
+            android:layout_height="26dp"
             android:layout_marginStart="4dp"
             android:layout_weight="0.85"
             android:background="@drawable/widget_pill_bg"
@@ -194,7 +138,7 @@
         <TextView
             android:id="@+id/btn_filter_dmtt"
             android:layout_width="0dp"
-            android:layout_height="28dp"
+            android:layout_height="26dp"
             android:layout_marginStart="4dp"
             android:layout_weight="0.85"
             android:background="@drawable/widget_pill_bg"
@@ -206,87 +150,34 @@
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- Full-Bleed Live Auto-Zoom Route Map (Compact Mode) -->
-    <RelativeLayout
-        android:id="@+id/rl_widget_map_box"
+    <!-- Divider -->
+    <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="6dp"
+        android:background="#26FFFFFF"
+        android:contentDescription="@null" />
+
+    <!-- Full-Height Scrollable Nearby Facilities List -->
+    <ListView
+        android:id="@+id/lv_widget_locations"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="7dp"
+        android:layout_marginTop="2dp"
         android:layout_weight="1"
-        android:background="@drawable/widget_map_card_bg"
-        android:padding="1dp">
+        android:divider="#1AFFFFFF"
+        android:dividerHeight="1dp"
+        android:scrollbars="none" />
 
-        <ImageView
-            android:id="@+id/iv_widget_map"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:contentDescription="Yaqin muassasaga marshrut xaritasi"
-            android:scaleType="centerCrop" />
-
-        <!-- Subtle bottom-left interactive hint badge -->
-        <TextView
-            android:id="@+id/tv_map_badge"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_alignParentStart="true"
-            android:layout_alignParentBottom="true"
-            android:layout_margin="6dp"
-            android:background="@drawable/widget_map_ctrl_bg"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:paddingStart="7dp"
-            android:paddingTop="3dp"
-            android:paddingEnd="7dp"
-            android:paddingBottom="3dp"
-            android:text="Avto masshtab · Surish uchun bosing"
-            android:textColor="#E2E8F0"
-            android:textSize="9sp"
-            android:textStyle="bold" />
-
-        <!-- Right-side Zoom + / - / Auto Controls -->
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_alignParentEnd="true"
-            android:layout_centerVertical="true"
-            android:layout_marginEnd="6dp"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/btn_map_zoom_in"
-                android:layout_width="28dp"
-                android:layout_height="26dp"
-                android:background="@drawable/widget_map_ctrl_bg"
-                android:gravity="center"
-                android:text="+"
-                android:textColor="#FFFFFF"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/btn_map_zoom_out"
-                android:layout_width="28dp"
-                android:layout_height="26dp"
-                android:layout_marginTop="4dp"
-                android:background="@drawable/widget_map_ctrl_bg"
-                android:gravity="center"
-                android:text="−"
-                android:textColor="#FFFFFF"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/btn_map_zoom_auto"
-                android:layout_width="28dp"
-                android:layout_height="26dp"
-                android:layout_marginTop="4dp"
-                android:background="@drawable/widget_map_ctrl_bg"
-                android:gravity="center"
-                android:text="◎"
-                android:textColor="#38BDF8"
-                android:textSize="13sp"
-                android:textStyle="bold" />
-        </LinearLayout>
-    </RelativeLayout>
+    <TextView
+        android:id="@+id/tv_widget_empty"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:text="Yuklanmoqda..."
+        android:textColor="#CBD5E1"
+        android:textSize="12sp"
+        android:visibility="gone" />
 
 </LinearLayout>
