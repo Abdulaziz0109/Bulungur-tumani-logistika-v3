@@ -60,6 +60,8 @@ object WidgetDataFetcher {
     private const val KEY_RENDERED_LNG = "rendered_lng"
     private const val KEY_RENDERED_TIME = "rendered_time"
     private const val KEY_RENDERED_FILTER = "rendered_filter"
+    private const val KEY_LIVE_GPS = "live_gps_enabled"
+    private const val KEY_MAP_ZOOM_OFFSET = "map_zoom_offset"
 
     private const val FIRESTORE_RUN_QUERY_URL =
         "https://firestore.googleapis.com/v1/projects/aerial-tide-389707/databases/ai-studio-eab0bc31-feff-4322-a7ef-dc4ebf4115db/documents:runQuery"
@@ -78,6 +80,31 @@ object WidgetDataFetcher {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_FILTER, filter)
+            .apply()
+    }
+
+    fun isLiveGpsEnabled(context: Context): Boolean {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_LIVE_GPS, false)
+    }
+
+    fun setLiveGpsEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_LIVE_GPS, enabled)
+            .apply()
+    }
+
+    fun getMapZoomOffset(context: Context): Int {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt(KEY_MAP_ZOOM_OFFSET, 0)
+            .coerceIn(-3, 3)
+    }
+
+    fun setMapZoomOffset(context: Context, offset: Int) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(KEY_MAP_ZOOM_OFFSET, offset.coerceIn(-3, 3))
             .apply()
     }
 

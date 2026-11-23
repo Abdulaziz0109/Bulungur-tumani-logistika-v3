@@ -6,6 +6,9 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="true"
@@ -37,6 +40,15 @@
             android:theme="@style/Theme.BulungurMMTB.QuickSearch"
             android:windowSoftInputMode="stateAlwaysVisible|adjustResize" />
 
+        <!-- Instant native floating interactive pinch-zoom & finger-pan map overlay -->
+        <activity
+            android:name=".FloatingMapActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:theme="@style/Theme.BulungurMMTB.QuickSearch" />
+
         <!-- Native Android Home Screen Widget (appears in Samsung One UI Vidjetlar tray) -->
         <receiver
             android:name=".MmtbWidgetProvider"
@@ -48,6 +60,10 @@
                 <action android:name="uz.bulungur.mmtb.ACTION_SET_FILTER" />
                 <action android:name="uz.bulungur.mmtb.ACTION_AUTO_TICK" />
                 <action android:name="uz.bulungur.mmtb.ACTION_PASSIVE_LOCATION" />
+                <action android:name="uz.bulungur.mmtb.ACTION_TOGGLE_LIVE" />
+                <action android:name="uz.bulungur.mmtb.ACTION_ZOOM_IN" />
+                <action android:name="uz.bulungur.mmtb.ACTION_ZOOM_OUT" />
+                <action android:name="uz.bulungur.mmtb.ACTION_ZOOM_AUTO" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
@@ -59,6 +75,12 @@
             android:name=".MmtbWidgetService"
             android:exported="false"
             android:permission="android.permission.BIND_REMOTEVIEWS" />
+
+        <!-- Continuous live GPS tracking service for real-time auto-zooming widget map -->
+        <service
+            android:name=".LiveLocationService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
 
     </application>
 </manifest>
