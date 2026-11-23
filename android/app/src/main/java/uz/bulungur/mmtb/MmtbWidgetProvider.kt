@@ -32,7 +32,9 @@ class MmtbWidgetProvider : AppWidgetProvider() {
         const val ACTION_ZOOM_IN = "uz.bulungur.mmtb.ACTION_ZOOM_IN"
         const val ACTION_ZOOM_OUT = "uz.bulungur.mmtb.ACTION_ZOOM_OUT"
         const val ACTION_ZOOM_AUTO = "uz.bulungur.mmtb.ACTION_ZOOM_AUTO"
+        const val ACTION_SET_MAP_PROVIDER = "uz.bulungur.mmtb.ACTION_SET_MAP_PROVIDER"
         const val EXTRA_FILTER = "extra_filter"
+        const val EXTRA_MAP_PROVIDER = "extra_map_provider"
 
         private const val REQUEST_CODE_AUTO_TICK = 401
         private const val REQUEST_CODE_PASSIVE_LOC = 402
@@ -302,6 +304,27 @@ class MmtbWidgetProvider : AppWidgetProvider() {
                 }
             }
 
+            ACTION_SET_MAP_PROVIDER -> {
+                val provider = intent.getStringExtra(EXTRA_MAP_PROVIDER)
+                    ?: WidgetDataFetcher.MAP_PROVIDER_GOOGLE
+                WidgetDataFetcher.setMapProvider(context, provider)
+                val pendingResult = goAsync()
+                executor.execute {
+                    try {
+                        updateAllWidgets(
+                            context = context,
+                            appWidgetManager = appWidgetManager,
+                            appWidgetIds = ids,
+                            forceNetwork = false,
+                            requestFreshGps = false,
+                            skipIfStationary = false
+                        )
+                    } finally {
+                        pendingResult.finish()
+                    }
+                }
+            }
+
             ACTION_PASSIVE_LOCATION -> {
                 val loc = extractLocationExtra(intent)
                 if (loc != null) {
@@ -372,6 +395,7 @@ class MmtbWidgetProvider : AppWidgetProvider() {
         val activeFilter = WidgetDataFetcher.getSavedFilter(context)
         val liveOn = WidgetDataFetcher.isLiveGpsEnabled(context)
         val zoomOffset = WidgetDataFetcher.getMapZoomOffset(context)
+        val mapProvider = WidgetDataFetcher.getMapProvider(context)
 
         val snapshot = WidgetDataFetcher.loadSnapshot(
             context = context,
@@ -407,6 +431,7 @@ class MmtbWidgetProvider : AppWidgetProvider() {
             nearest = nearest,
             nearbyOthers = filtered,
             zoomOffset = zoomOffset,
+            provider = mapProvider,
             widthPx = 600,
             heightPx = 310
         )
@@ -516,10 +541,11 @@ class MmtbWidgetProvider : AppWidgetProvider() {
 
             // Live auto-zoomed route map bitmap + tap to open interactive pinch/pan floating map
             views.setImageViewBitmap(R.id.iv_widget_map, renderedMap.bitmap)
+            val providerTag = if (mapProvider == WidgetDataFetcher.MAP_PROVIDER_YANDEX) "Yandex" else "Google"
             val zoomLabel = if (zoomOffset == 0) {
-                "Avto z${renderedMap.effectiveZoom} · Surish uchun bosing"
+                "$providerTag · Avto z${renderedMap.effectiveZoom} · Surish uchun bosing"
             } else {
-                "Masshtab z${renderedMap.effectiveZoom} · Surish uchun bosing"
+                "$providerTag · z${renderedMap.effectiveZoom} · Surish uchun bosing"
             }
             views.setTextViewText(R.id.tv_map_badge, zoomLabel)
             views.setOnClickPendingIntent(

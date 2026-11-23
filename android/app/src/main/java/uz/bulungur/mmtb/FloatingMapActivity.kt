@@ -46,12 +46,15 @@ class FloatingMapActivity : AppCompatActivity() {
     private lateinit var pillAll: TextView
     private lateinit var pillMaktab: TextView
     private lateinit var pillDmtt: TextView
+    private lateinit var btnProviderGoogle: TextView
+    private lateinit var btnProviderYandex: TextView
     private lateinit var mapView: InteractiveMapView
 
     private val bgExecutor = Executors.newFixedThreadPool(6)
     private var locationManager: LocationManager? = null
 
     private var activeFilter: String = "all"
+    private var activeProvider: String = WidgetDataFetcher.MAP_PROVIDER_GOOGLE
     private var snapshot: WidgetSnapshot = WidgetSnapshot(
         locations = emptyList(),
         totalMaktab = 0,
@@ -88,6 +91,8 @@ class FloatingMapActivity : AppCompatActivity() {
         pillAll = findViewById(R.id.fmap_pill_all)
         pillMaktab = findViewById(R.id.fmap_pill_maktab)
         pillDmtt = findViewById(R.id.fmap_pill_dmtt)
+        btnProviderGoogle = findViewById(R.id.fmap_provider_google)
+        btnProviderYandex = findViewById(R.id.fmap_provider_yandex)
 
         findViewById<View>(R.id.floating_map_backdrop).setOnClickListener {
             finish()
@@ -104,8 +109,10 @@ class FloatingMapActivity : AppCompatActivity() {
             updateHeaderText()
             loadRouteForActiveTarget(recenter = false)
         }
+        // Insert at index 0 so the floating Google/Yandex pill stays cleanly on top of the canvas
         findViewById<FrameLayout>(R.id.fmap_canvas_holder).addView(
             mapView,
+            0,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
@@ -115,6 +122,8 @@ class FloatingMapActivity : AppCompatActivity() {
         pillAll.setOnClickListener { switchFilter("all") }
         pillMaktab.setOnClickListener { switchFilter("maktab") }
         pillDmtt.setOnClickListener { switchFilter("dmtt") }
+        btnProviderGoogle.setOnClickListener { switchMapProvider(WidgetDataFetcher.MAP_PROVIDER_GOOGLE) }
+        btnProviderYandex.setOnClickListener { switchMapProvider(WidgetDataFetcher.MAP_PROVIDER_YANDEX) }
 
         findViewById<View>(R.id.btn_fmap_recenter).setOnClickListener {
             userManuallySelectedTarget = false
@@ -137,7 +146,10 @@ class FloatingMapActivity : AppCompatActivity() {
         }
 
         activeFilter = WidgetDataFetcher.getSavedFilter(this)
+        activeProvider = WidgetDataFetcher.getMapProvider(this)
+        mapView.setMapProvider(activeProvider)
         updateFilterPills()
+        updateProviderPills()
         refreshSnapshotAndRoute(recenter = true)
         startForegroundGps()
     }
@@ -198,6 +210,36 @@ class FloatingMapActivity : AppCompatActivity() {
         pillDmtt.setBackgroundResource(
             if (activeFilter == "dmtt") R.drawable.widget_pill_active else R.drawable.widget_pill_bg
         )
+    }
+
+    private fun switchMapProvider(provider: String) {
+        if (activeProvider == provider) return
+        activeProvider = provider
+        WidgetDataFetcher.setMapProvider(this, provider)
+        updateProviderPills()
+        mapView.setMapProvider(provider)
+
+        // Immediately sync the Home Screen Widget map style too
+        val intent = Intent(this, MmtbWidgetProvider::class.java).apply {
+            action = MmtbWidgetProvider.ACTION_SET_MAP_PROVIDER
+            putExtra(MmtbWidgetProvider.EXTRA_MAP_PROVIDER, provider)
+        }
+        sendBroadcast(intent)
+    }
+
+    private fun updateProviderPills() {
+        val isYandex = activeProvider == WidgetDataFetcher.MAP_PROVIDER_YANDEX
+        if (isYandex) {
+            btnProviderGoogle.background = null
+            btnProviderGoogle.setTextColor(Color.parseColor("#CBD5E1"))
+            btnProviderYandex.setBackgroundResource(R.drawable.widget_btn_yandex)
+            btnProviderYandex.setTextColor(Color.WHITE)
+        } else {
+            btnProviderGoogle.setBackgroundResource(R.drawable.widget_btn_google)
+            btnProviderGoogle.setTextColor(Color.WHITE)
+            btnProviderYandex.background = null
+            btnProviderYandex.setTextColor(Color.parseColor("#CBD5E1"))
+        }
     }
 
     private fun filteredLocations(): List<MmtbLocation> {
@@ -320,6 +362,7 @@ class FloatingMapActivity : AppCompatActivity() {
         private var centerLat = 39.7647
         private var centerLng = 67.2714
         private var zoom = 14.0
+        private var mapProvider = WidgetDataFetcher.MAP_PROVIDER_GOOGLE
 
         private var snap: WidgetSnapshot? = null
         private var markers: List<MmtbLocation> = emptyList()
@@ -387,11 +430,12 @@ class FloatingMapActivity : AppCompatActivity() {
                     distanceX: Float,
                     distanceY: Float
                 ): Boolean {
-                    val cWorld = WidgetMapRenderer.latLngToWorldPixel(centerLat, centerLng, zoom)
+                    val cWorld = WidgetMapRenderer.latLngToWorldPixel(centerLat, centerLng, zoom, mapProvider)
                     val next = WidgetMapRenderer.worldPixelToLatLng(
                         cWorld.first + distanceX,
                         cWorld.second + distanceY,
-                        zoom
+                        zoom,
+                        mapProvider
                     )
                     centerLat = next.first.coerceIn(-85.0, 85.0)
                     centerLng = next.second.coerceIn(-180.0, 180.0)
@@ -415,6 +459,15 @@ class FloatingMapActivity : AppCompatActivity() {
                 }
             }
         )
+
+        fun setMapProvider(provider: String) {
+            if (this.mapProvider != provider) {
+                this.mapProvider = provider
+                memTiles.clear()
+                loadingTiles.clear()
+                invalidate()
+            }
+        }
 
         fun setData(
             snapshot: WidgetSnapshot,
@@ -447,7 +500,7 @@ class FloatingMapActivity : AppCompatActivity() {
             }
             centerLat = (minLat + maxLat) / 2.0
             centerLng = (minLng + maxLng) / 2.0
-            zoom = WidgetMapRenderer.computeAutoZoom(points, width, height).toDouble()
+            zoom = WidgetMapRenderer.computeAutoZoom(points, width, height, mapProvider).toDouble()
             invalidate()
         }
 
@@ -467,13 +520,13 @@ class FloatingMapActivity : AppCompatActivity() {
 
         private fun findMarkerAt(tapX: Float, tapY: Float): MmtbLocation? {
             if (width <= 0 || height <= 0) return null
-            val cWorld = WidgetMapRenderer.latLngToWorldPixel(centerLat, centerLng, zoom)
+            val cWorld = WidgetMapRenderer.latLngToWorldPixel(centerLat, centerLng, zoom, mapProvider)
             val ox = cWorld.first - width / 2.0
             val oy = cWorld.second - height / 2.0
             var best: MmtbLocation? = null
             var bestDist = 54f
             for (loc in markers) {
-                val wp = WidgetMapRenderer.latLngToWorldPixel(loc.lat, loc.lng, zoom)
+                val wp = WidgetMapRenderer.latLngToWorldPixel(loc.lat, loc.lng, zoom, mapProvider)
                 val sx = (wp.first - ox).toFloat()
                 val sy = (wp.second - oy).toFloat()
                 val d = hypot(sx - tapX, sy - tapY)
@@ -489,11 +542,12 @@ class FloatingMapActivity : AppCompatActivity() {
             super.onDraw(canvas)
             canvas.drawColor(Color.parseColor("#E2E8F0"))
 
+            val reqProvider = mapProvider
             val tileZoom = floor(zoom).toInt().coerceIn(10, 17)
             val scaleFactor = Math.pow(2.0, zoom - tileZoom).toFloat()
             val scaledTilePx = 256.0 * scaleFactor
 
-            val centerWorld = WidgetMapRenderer.latLngToWorldPixel(centerLat, centerLng, zoom)
+            val centerWorld = WidgetMapRenderer.latLngToWorldPixel(centerLat, centerLng, zoom, reqProvider)
             val originWorldX = centerWorld.first - width / 2.0
             val originWorldY = centerWorld.second - height / 2.0
 
@@ -508,7 +562,7 @@ class FloatingMapActivity : AppCompatActivity() {
                 for (ty in startTileY..endTileY) {
                     if (ty < 0 || ty >= maxTile) continue
                     val wrappedX = ((tx % maxTile) + maxTile) % maxTile
-                    val key = "$tileZoom/$wrappedX/$ty"
+                    val key = "$reqProvider/$tileZoom/$wrappedX/$ty"
                     val left = (tx * scaledTilePx - originWorldX).toFloat()
                     val top = (ty * scaledTilePx - originWorldY).toFloat()
                     dstRect.set(left, top, left + scaledTilePx.toFloat() + 1f, top + scaledTilePx.toFloat() + 1f)
@@ -525,10 +579,11 @@ class FloatingMapActivity : AppCompatActivity() {
                                     tileZoom,
                                     wrappedX,
                                     ty,
+                                    provider = reqProvider,
                                     allowNetwork = true
                                 )
                                 loadingTiles.remove(key)
-                                if (loaded != null) {
+                                if (loaded != null && mapProvider == reqProvider) {
                                     if (memTiles.size > 80) memTiles.clear()
                                     memTiles[key] = loaded
                                     postInvalidate()
@@ -540,7 +595,7 @@ class FloatingMapActivity : AppCompatActivity() {
             }
 
             fun toScreen(lat: Double, lng: Double): Pair<Float, Float> {
-                val wp = WidgetMapRenderer.latLngToWorldPixel(lat, lng, zoom)
+                val wp = WidgetMapRenderer.latLngToWorldPixel(lat, lng, zoom, reqProvider)
                 return Pair((wp.first - originWorldX).toFloat(), (wp.second - originWorldY).toFloat())
             }
 

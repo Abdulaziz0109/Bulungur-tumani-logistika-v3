@@ -70,6 +70,21 @@ class MainActivity : AppCompatActivity() {
         fun getAppVersion(): String {
             return BuildConfig.VERSION_NAME
         }
+
+        @JavascriptInterface
+        fun getWidgetMapProvider(): String {
+            return WidgetDataFetcher.getMapProvider(applicationContext)
+        }
+
+        @JavascriptInterface
+        fun setWidgetMapProvider(provider: String) {
+            WidgetDataFetcher.setMapProvider(applicationContext, provider)
+            val intent = Intent(applicationContext, MmtbWidgetProvider::class.java).apply {
+                action = MmtbWidgetProvider.ACTION_SET_MAP_PROVIDER
+                putExtra(MmtbWidgetProvider.EXTRA_MAP_PROVIDER, provider)
+            }
+            applicationContext.sendBroadcast(intent)
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")

@@ -25,11 +25,13 @@ import java.util.concurrent.TimeUnit
 import kotlin.math.PI
 import kotlin.math.atan
 import kotlin.math.cos
+import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.sin
 import kotlin.math.sinh
 import kotlin.math.tan
 
@@ -52,6 +54,7 @@ data class RenderedWidgetMap(
  */
 object WidgetMapRenderer {
     private const val TILE_SIZE = 256.0
+    private const val WGS84_E = 0.0818191908426215
     private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14; Mobile) BulungurMMTB/1.2"
     private const val TILE_CACHE_FOLDER = "map_tiles_v2"
     private const val TILE_MAX_AGE_MS = 14L * 24L * 60L * 60L * 1000L
@@ -70,20 +73,51 @@ object WidgetMapRenderer {
     @Volatile
     private var lastRouteTimeMs: Long = 0L
 
-    fun latLngToWorldPixel(lat: Double, lng: Double, zoom: Double): Pair<Double, Double> {
+    fun latLngToWorldPixel(
+        lat: Double,
+        lng: Double,
+        zoom: Double,
+        provider: String = WidgetDataFetcher.MAP_PROVIDER_GOOGLE
+    ): Pair<Double, Double> {
         val clampedLat = lat.coerceIn(-85.0511, 85.0511)
         val scale = TILE_SIZE * 2.0.pow(zoom)
         val x = (lng + 180.0) / 360.0 * scale
         val latRad = Math.toRadians(clampedLat)
-        val y = (1.0 - ln(tan(latRad) + 1.0 / cos(latRad)) / PI) / 2.0 * scale
+        val y = if (provider == WidgetDataFetcher.MAP_PROVIDER_YANDEX) {
+            // Exact EPSG:3395 (WGS84 Ellipsoidal Mercator) required by Yandex Maps tiles
+            val esin = WGS84_E * sin(latRad)
+            val con = ((1.0 - esin) / (1.0 + esin)).pow(WGS84_E / 2.0)
+            val ts = tan(PI / 4.0 - latRad / 2.0) / con
+            val yMerc = -ln(ts)
+            (1.0 - yMerc / PI) / 2.0 * scale
+        } else {
+            // Standard EPSG:3857 (Spherical Mercator) for Google Maps / OSM
+            (1.0 - ln(tan(latRad) + 1.0 / cos(latRad)) / PI) / 2.0 * scale
+        }
         return Pair(x, y)
     }
 
-    fun worldPixelToLatLng(wx: Double, wy: Double, zoom: Double): Pair<Double, Double> {
+    fun worldPixelToLatLng(
+        wx: Double,
+        wy: Double,
+        zoom: Double,
+        provider: String = WidgetDataFetcher.MAP_PROVIDER_GOOGLE
+    ): Pair<Double, Double> {
         val scale = TILE_SIZE * 2.0.pow(zoom)
         val lng = wx / scale * 360.0 - 180.0
-        val n = PI - 2.0 * PI * wy / scale
-        val lat = Math.toDegrees(atan(sinh(n)))
+        val lat = if (provider == WidgetDataFetcher.MAP_PROVIDER_YANDEX) {
+            val yMerc = PI * (1.0 - 2.0 * wy / scale)
+            val ts = exp(-yMerc)
+            var phi = PI / 2.0 - 2.0 * atan(ts)
+            for (i in 0 until 6) {
+                val esin = WGS84_E * sin(phi)
+                phi = PI / 2.0 - 2.0 * atan(ts * ((1.0 - esin) / (1.0 + esin)).pow(WGS84_E / 2.0))
+            }
+            Math.toDegrees(phi)
+        } else {
+            val n = PI - 2.0 * PI * wy / scale
+            Math.toDegrees(atan(sinh(n)))
+        }
         return Pair(lat, lng)
     }
 
@@ -95,7 +129,8 @@ object WidgetMapRenderer {
     fun computeAutoZoom(
         points: List<Pair<Double, Double>>,
         widthPx: Int,
-        heightPx: Int
+        heightPx: Int,
+        provider: String = WidgetDataFetcher.MAP_PROVIDER_GOOGLE
     ): Int {
         if (points.isEmpty()) return 14
         var minLat = Double.MAX_VALUE
@@ -113,8 +148,8 @@ object WidgetMapRenderer {
         val usableH = heightPx * 0.62
 
         for (z in 17 downTo 11) {
-            val topLeft = latLngToWorldPixel(maxLat, minLng, z.toDouble())
-            val bottomRight = latLngToWorldPixel(minLat, maxLng, z.toDouble())
+            val topLeft = latLngToWorldPixel(maxLat, minLng, z.toDouble(), provider)
+            val bottomRight = latLngToWorldPixel(minLat, maxLng, z.toDouble(), provider)
             val spanX = kotlin.math.abs(bottomRight.first - topLeft.first)
             val spanY = kotlin.math.abs(bottomRight.second - topLeft.second)
             if (spanX <= usableW && spanY <= usableH) {
@@ -232,14 +267,20 @@ object WidgetMapRenderer {
         zoom: Int,
         tileX: Int,
         tileY: Int,
+        provider: String = WidgetDataFetcher.MAP_PROVIDER_GOOGLE,
         allowNetwork: Boolean = true
     ): Bitmap? {
         cleanLegacyCacheIfNeeded(context)
         val maxTile = 1 shl zoom
         if (tileY < 0 || tileY >= maxTile) return null
         val wrappedX = ((tileX % maxTile) + maxTile) % maxTile
+        val safeProvider = if (provider == WidgetDataFetcher.MAP_PROVIDER_YANDEX) {
+            WidgetDataFetcher.MAP_PROVIDER_YANDEX
+        } else {
+            WidgetDataFetcher.MAP_PROVIDER_GOOGLE
+        }
 
-        val cacheDir = File(context.cacheDir, "$TILE_CACHE_FOLDER/$zoom/$wrappedX")
+        val cacheDir = File(context.cacheDir, "$TILE_CACHE_FOLDER/$safeProvider/$zoom/$wrappedX")
         val tileFile = File(cacheDir, "$tileY.png")
 
         if (tileFile.exists() && tileFile.length() > 100L) {
@@ -252,19 +293,26 @@ object WidgetMapRenderer {
 
         if (!allowNetwork) return null
 
-        val shard = (wrappedX + tileY) and 3
-        val urls = listOf(
-            "https://mt$shard.google.com/vt/lyrs=m&hl=uz&x=$wrappedX&y=$tileY&z=$zoom",
-            "https://tile.openstreetmap.org/$zoom/$wrappedX/$tileY.png"
-        )
+        val urls = if (safeProvider == WidgetDataFetcher.MAP_PROVIDER_YANDEX) {
+            listOf(
+                "https://core-renderer-tiles.maps.yandex.net/tiles?l=map&x=$wrappedX&y=$tileY&z=$zoom&scale=1&lang=uz_UZ",
+                "https://core-renderer-tiles.maps.yandex.net/tiles?l=map&x=$wrappedX&y=$tileY&z=$zoom&scale=1&lang=ru_RU"
+            )
+        } else {
+            val shard = (wrappedX + tileY) and 3
+            listOf(
+                "https://mt$shard.google.com/vt/lyrs=m&hl=uz&x=$wrappedX&y=$tileY&z=$zoom",
+                "https://tile.openstreetmap.org/$zoom/$wrappedX/$tileY.png"
+            )
+        }
 
         for (tileUrl in urls) {
             var conn: HttpURLConnection? = null
             try {
                 conn = (URL(tileUrl).openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
-                    connectTimeout = 2200
-                    readTimeout = 2200
+                    connectTimeout = 2800
+                    readTimeout = 2800
                     setRequestProperty("User-Agent", USER_AGENT)
                 }
                 if (conn.responseCode in 200..299) {
@@ -285,7 +333,7 @@ object WidgetMapRenderer {
                     }
                 }
             } catch (_: Exception) {
-                // Try fallback provider
+                // Try fallback URL
             } finally {
                 conn?.disconnect()
             }
@@ -305,6 +353,7 @@ object WidgetMapRenderer {
         nearest: MmtbLocation?,
         nearbyOthers: List<MmtbLocation>,
         zoomOffset: Int,
+        provider: String = WidgetDataFetcher.MAP_PROVIDER_GOOGLE,
         widthPx: Int = 600,
         heightPx: Int = 310
     ): RenderedWidgetMap {
@@ -332,7 +381,7 @@ object WidgetMapRenderer {
             listOf(Pair(snapshot.refLat, snapshot.refLng))
         }
 
-        val autoZoom = computeAutoZoom(framePoints, widthPx, heightPx)
+        val autoZoom = computeAutoZoom(framePoints, widthPx, heightPx, provider)
         val zoom = (autoZoom + zoomOffset).coerceIn(10, 17)
 
         var minLat = Double.MAX_VALUE
@@ -352,7 +401,7 @@ object WidgetMapRenderer {
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.parseColor("#E2E8F0"))
 
-        val centerWorld = latLngToWorldPixel(centerLat, centerLng, zoom.toDouble())
+        val centerWorld = latLngToWorldPixel(centerLat, centerLng, zoom.toDouble(), provider)
         val originWorldX = centerWorld.first - widthPx / 2.0
         val originWorldY = centerWorld.second - heightPx / 2.0
 
@@ -375,7 +424,14 @@ object WidgetMapRenderer {
         for (coord in tileCoords) {
             tilePool.execute {
                 try {
-                    val bmp = loadTileBitmap(appCtx, zoom, coord.first, coord.second, allowNetwork = true)
+                    val bmp = loadTileBitmap(
+                        appCtx,
+                        zoom,
+                        coord.first,
+                        coord.second,
+                        provider = provider,
+                        allowNetwork = true
+                    )
                     if (bmp != null) {
                         fetchedTiles[coord] = bmp
                     }
@@ -385,7 +441,7 @@ object WidgetMapRenderer {
             }
         }
         try {
-            latch.await(2600L, TimeUnit.MILLISECONDS)
+            latch.await(3200L, TimeUnit.MILLISECONDS)
         } catch (_: InterruptedException) {
             // Draw whatever tiles finished in time
         }
@@ -419,7 +475,7 @@ object WidgetMapRenderer {
         }
 
         fun toScreen(lat: Double, lng: Double): Pair<Float, Float> {
-            val wp = latLngToWorldPixel(lat, lng, zoom.toDouble())
+            val wp = latLngToWorldPixel(lat, lng, zoom.toDouble(), provider)
             return Pair((wp.first - originWorldX).toFloat(), (wp.second - originWorldY).toFloat())
         }
 

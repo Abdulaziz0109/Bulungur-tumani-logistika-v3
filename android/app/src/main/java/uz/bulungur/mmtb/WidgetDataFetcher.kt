@@ -62,6 +62,10 @@ object WidgetDataFetcher {
     private const val KEY_RENDERED_FILTER = "rendered_filter"
     private const val KEY_LIVE_GPS = "live_gps_enabled"
     private const val KEY_MAP_ZOOM_OFFSET = "map_zoom_offset"
+    private const val KEY_MAP_PROVIDER = "widget_map_provider"
+
+    const val MAP_PROVIDER_GOOGLE = "google"
+    const val MAP_PROVIDER_YANDEX = "yandex"
 
     private const val FIRESTORE_RUN_QUERY_URL =
         "https://firestore.googleapis.com/v1/projects/aerial-tide-389707/databases/ai-studio-eab0bc31-feff-4322-a7ef-dc4ebf4115db/documents:runQuery"
@@ -105,6 +109,24 @@ object WidgetDataFetcher {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putInt(KEY_MAP_ZOOM_OFFSET, offset.coerceIn(-3, 3))
+            .apply()
+    }
+
+    fun getMapProvider(context: Context): String {
+        val raw = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_MAP_PROVIDER, MAP_PROVIDER_GOOGLE)
+        return if (raw == MAP_PROVIDER_YANDEX) MAP_PROVIDER_YANDEX else MAP_PROVIDER_GOOGLE
+    }
+
+    fun setMapProvider(context: Context, provider: String) {
+        val normalized = if (provider.lowercase(Locale.ROOT) == MAP_PROVIDER_YANDEX) {
+            MAP_PROVIDER_YANDEX
+        } else {
+            MAP_PROVIDER_GOOGLE
+        }
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_MAP_PROVIDER, normalized)
             .apply()
     }
 
