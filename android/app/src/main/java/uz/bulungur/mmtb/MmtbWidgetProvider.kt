@@ -36,7 +36,7 @@ class MmtbWidgetProvider : AppWidgetProvider() {
 
         private const val REQUEST_CODE_AUTO_TICK = 401
         private const val REQUEST_CODE_PASSIVE_LOC = 402
-        private const val HYBRID_HEIGHT_THRESHOLD_DP = 320
+        private const val HYBRID_HEIGHT_THRESHOLD_DP = 360
 
         private val executor = Executors.newSingleThreadExecutor()
 

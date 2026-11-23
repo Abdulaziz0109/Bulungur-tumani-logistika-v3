@@ -48,7 +48,7 @@ class FloatingMapActivity : AppCompatActivity() {
     private lateinit var pillDmtt: TextView
     private lateinit var mapView: InteractiveMapView
 
-    private val bgExecutor = Executors.newFixedThreadPool(3)
+    private val bgExecutor = Executors.newFixedThreadPool(6)
     private var locationManager: LocationManager? = null
 
     private var activeFilter: String = "all"
@@ -220,6 +220,14 @@ class FloatingMapActivity : AppCompatActivity() {
             activeTarget = snapshot.locations.firstOrNull { it.id == currentId } ?: filtered.firstOrNull()
         }
         mapView.setData(snapshot, filtered, activeTarget, activeRoute)
+        if (recenter && activeTarget != null) {
+            mapView.frameRoute(
+                listOf(
+                    Pair(snapshot.refLat, snapshot.refLng),
+                    Pair(activeTarget!!.lat, activeTarget!!.lng)
+                )
+            )
+        }
         updateHeaderText()
         loadRouteForActiveTarget(recenter = recenter)
     }
@@ -228,6 +236,14 @@ class FloatingMapActivity : AppCompatActivity() {
         val filtered = filteredLocations()
         activeTarget = filtered.firstOrNull()
         mapView.setData(snapshot, filtered, activeTarget, activeRoute)
+        if (activeTarget != null) {
+            mapView.frameRoute(
+                listOf(
+                    Pair(snapshot.refLat, snapshot.refLng),
+                    Pair(activeTarget!!.lat, activeTarget!!.lng)
+                )
+            )
+        }
         updateHeaderText()
         loadRouteForActiveTarget(recenter = true)
     }
