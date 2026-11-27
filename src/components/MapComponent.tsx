@@ -23,6 +23,14 @@ import {
   sortLocationsNearestFirst,
   haversineDistanceKm
 } from '../utils/navigationHelpers';
+import {
+  MahallaFeature,
+  MahallaFeatureCollection,
+  getMahallaColor,
+  getLocationsInsideMahalla,
+  findMahallaForPoint,
+  matchMahallasByQuery
+} from '../utils/mahallaGeo';
 
 const getShortLabelString = (name: string) => {
   const safeName = name || '?';
@@ -230,6 +238,7 @@ export default function MapComponent() {
   const [searchAreaQuery, setSearchAreaQuery] = useState('');
   const [isSearchingArea, setIsSearchingArea] = useState(false);
   const [mahallaBoundary, setMahallaBoundary] = useState<any>(null);
+  const [selectedMahalla, setSelectedMahalla] = useState<MahallaFeature | null>(null);
 
   // Telegram & Quick Driving States
   const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
@@ -294,10 +303,10 @@ export default function MapComponent() {
     }
   });
   const [filters, setFilters] = useState({ schools: true, kindergartens: true, others: true });
-  const [layers, setLayers] = useState({ district: true, neighborhoods: false, highways: false });
+  const [layers, setLayers] = useState({ district: true, neighborhoods: true, highways: false });
   const [highwaysData, setHighwaysData] = useState<any>(null);
   const [isLoadingHighways, setIsLoadingHighways] = useState(false);
-  const [neighborhoodsData, setNeighborhoodsData] = useState<any>(null);
+  const [neighborhoodsData, setNeighborhoodsData] = useState<MahallaFeatureCollection | null>(null);
   const [isLoadingNeighborhoods, setIsLoadingNeighborhoods] = useState(false);
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -752,8 +761,35 @@ export default function MapComponent() {
     await executeWithOrigin(null);
   };
 
+  const selectMahallaFeature = (feature: MahallaFeature, closeSettings = false) => {
+    setSelectedMahalla(feature);
+    setMahallaBoundary(feature);
+    setLayers(prev => (prev.neighborhoods ? prev : { ...prev, neighborhoods: true }));
+    if (mapRef.current) {
+      try {
+        const geojsonObj = L.geoJSON(feature as any);
+        const bounds = geojsonObj.getBounds();
+        if (bounds.isValid()) {
+          mapRef.current.fitBounds(bounds, { padding: [56, 56], maxZoom: 15, duration: 1.0 });
+        }
+      } catch (err) {
+        console.error('Mahalla fitBounds error:', err);
+      }
+    }
+    if (closeSettings) setIsSettingsOpen(false);
+    showToast(`${feature.properties.name_uz} MFY chegarasi belgilandi`, 'success');
+  };
+
   const searchAreaBoundary = async () => {
     if (!searchAreaQuery.trim()) return;
+    // 1. Instantly check official 49 Bulung'ur mahallas first!
+    const localMatches = matchMahallasByQuery(searchAreaQuery, neighborhoodsData);
+    if (localMatches.length > 0) {
+      selectMahallaFeature(localMatches[0], true);
+      return;
+    }
+
+    // 2. Fallback to OpenStreetMap Nominatim for areas outside Bulung'ur
     setIsSearchingArea(true);
     try {
         const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchAreaQuery)}&polygon_geojson=1&format=json&countrycodes=uz`);
@@ -763,6 +799,7 @@ export default function MapComponent() {
 
         if (filteredData.length > 0) {
             const boundaryData = filteredData[0].geojson;
+            setSelectedMahalla(null);
             setMahallaBoundary(boundaryData);
             
             if (mapRef.current) {
@@ -770,10 +807,10 @@ export default function MapComponent() {
                 const bounds = geojsonObj.getBounds();
                 mapRef.current.fitBounds(bounds, { padding: [50, 50], duration: 1.5 });
             }
-            setIsSettingsOpen(false); // Close settings to see the map
+            setIsSettingsOpen(false);
             showToast("Hudud chegarasi topildi", "success");
         } else {
-            showToast("Bu hududning chegarasi (Polygon) OpenStreetMap bazasida kiritilmagan", "error");
+            showToast("Bu hudud chegarasi topilmadi", "error");
         }
     } catch (err) {
         console.error("Area search error:", err);
@@ -833,8 +870,16 @@ export default function MapComponent() {
            setIsPickingRoutePoint(false);
            return;
         } else if (isPickingLocation && !isRadiusMode) {
-          setNewLocLat(parseFloat(e.latlng.lat.toFixed(6)));
-          setNewLocLng(parseFloat(e.latlng.lng.toFixed(6)));
+          const pickedLat = parseFloat(e.latlng.lat.toFixed(6));
+          const pickedLng = parseFloat(e.latlng.lng.toFixed(6));
+          setNewLocLat(pickedLat);
+          setNewLocLng(pickedLng);
+          if (!newLocMahalla.trim() && neighborhoodsData) {
+            const detected = findMahallaForPoint(pickedLat, pickedLng, neighborhoodsData);
+            if (detected) {
+              setNewLocMahalla(`${detected.properties.name_uz} MFY`);
+            }
+          }
           setIsPickingLocation(false);
           if (editingLocation) {
               setIsEditModalOpen(true);
@@ -1908,48 +1953,25 @@ export default function MapComponent() {
   }, [layers.highways]);
 
   useEffect(() => {
-    if (layers.neighborhoods && !neighborhoodsData) {
-      const fetchNeighborhoods = async () => {
+    if (!neighborhoodsData) {
+      const loadOfficialMahallas = async () => {
         setIsLoadingNeighborhoods(true);
         try {
-          const bbox = "39.50,67.05,39.95,67.65"; 
-          const query = `[out:json][timeout:25];(relation["admin_level"~"8|9|10|11"]["boundary"="administrative"](${bbox});way["admin_level"~"8|9|10|11"]["boundary"="administrative"](${bbox}););out geom;`;
-          const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
+          const res = await fetch('/bulungur_mahallalar.geojson');
           if (!res.ok) return;
-          const text = await res.text();
-          if (!text.trim().startsWith('{')) return;
-          const data = JSON.parse(text);
-          if (!data || !data.elements) return;
-          const features: any[] = [];
-          data.elements.forEach((el: any) => {
-             if (el.type === 'way' && el.geometry) {
-                 features.push({
-                    type: "Feature",
-                    properties: { id: el.id, name: el.tags?.name || '' },
-                    geometry: { type: "LineString", coordinates: el.geometry.map((g: any) => [g.lon, g.lat]) }
-                 });
-             } else if (el.type === 'relation' && el.members) {
-                 el.members.forEach((mem: any) => {
-                     if (mem.geometry) {
-                         features.push({
-                            type: "Feature",
-                            properties: { id: el.id, name: el.tags?.name || '' },
-                            geometry: { type: "LineString", coordinates: mem.geometry.map((g: any) => [g.lon, g.lat]) }
-                         });
-                     }
-                 });
-             }
-          });
-          setNeighborhoodsData({ type: "FeatureCollection", features });
+          const data: MahallaFeatureCollection = await res.json();
+          if (data && Array.isArray(data.features) && data.features.length > 0) {
+            setNeighborhoodsData(data);
+          }
         } catch (err) {
-          console.error("Neighborhoods fetch error:", err);
+          console.error("Mahallas GeoJSON load error:", err);
         } finally {
           setIsLoadingNeighborhoods(false);
         }
       };
-      fetchNeighborhoods();
+      loadOfficialMahallas();
     }
-  }, [layers.neighborhoods]);
+  }, [neighborhoodsData]);
 
   const fetchBoundary = async () => {
     try {
@@ -3376,15 +3398,17 @@ export default function MapComponent() {
                 
                 <div className="w-full h-px bg-slate-100"></div>
 
-                {/* Area Search */}
+                {/* Official Bulung'ur Mahalla Search (49 MFY) */}
                 <div>
-                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center"><Search className="w-3 h-3 mr-1.5"/> Maxsus hudud chegarasini izlab chizish</h3>
-                    <p className="text-[10px] text-slate-500 font-medium mb-2">Biron mahalla yoki qishloq nomini kiriting. (OSM bazasida mavjud bo'lsa chiziladi)</p>
+                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center">
+                      <Search className="w-3 h-3 mr-1.5"/> Bulung&apos;ur mahallalari ({neighborhoodsData?.features?.length || 49} ta MFY)
+                    </h3>
+                    <p className="text-[10px] text-slate-500 font-medium mb-2">Istalgan mahallani tanlang yoki nomini yozing — chegarasi va ichidagi muassasalar ko&apos;rsatiladi</p>
                     <div className="flex items-center space-x-2">
                         <input 
                             type="text" 
-                            placeholder="Masalan: Oqtepa..." 
-                            className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-sm font-semibold text-slate-900 placeholder:text-slate-400 placeholder:font-normal"
+                            placeholder="Masalan: Zarafshon, Mingchinor, Oqtepa..." 
+                            className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-xs font-semibold text-slate-900 placeholder:text-slate-400 placeholder:font-normal"
                             value={searchAreaQuery}
                             onChange={(e) => setSearchAreaQuery(e.target.value)}
                             onKeyDown={(e) => { if (e.key === 'Enter') searchAreaBoundary() }}
@@ -3392,18 +3416,38 @@ export default function MapComponent() {
                         <button 
                             onClick={searchAreaBoundary}
                             disabled={isSearchingArea}
-                            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-70 text-white font-bold text-sm rounded-xl transition-colors flex items-center shrink-0"
+                            className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-70 text-white font-bold text-xs rounded-xl transition-colors flex items-center shrink-0 cursor-pointer"
                         >
-                            {isSearchingArea ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : "Chizish"}
+                            {isSearchingArea ? <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : "Ko'rish"}
                         </button>
                     </div>
-                    {mahallaBoundary && (
+                    {neighborhoodsData && (
+                      <div className="mt-2.5 max-h-36 overflow-y-auto flex flex-wrap gap-1.5 pr-1">
+                        {matchMahallasByQuery(searchAreaQuery, neighborhoodsData).map((mf) => {
+                          const isSelected = selectedMahalla?.properties.id === mf.properties.id;
+                          return (
+                            <button
+                              key={mf.properties.id}
+                              onClick={() => selectMahallaFeature(mf, true)}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                                  : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700'
+                              }`}
+                            >
+                              {mf.properties.name_uz}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {(mahallaBoundary || selectedMahalla) && (
                         <div className="mt-2 text-right">
                             <button 
-                              onClick={() => { setMahallaBoundary(null); setSearchAreaQuery(''); }} 
-                              className="text-[10px] text-red-500 hover:text-red-700 font-bold tracking-wider uppercase"
+                              onClick={() => { setMahallaBoundary(null); setSelectedMahalla(null); setSearchAreaQuery(''); }} 
+                              className="text-[10px] text-red-500 hover:text-red-700 font-bold tracking-wider uppercase cursor-pointer"
                             >
-                              Chegarani tozalash
+                              Tanlangan mahallani tozalash
                             </button>
                         </div>
                     )}
@@ -3429,7 +3473,7 @@ export default function MapComponent() {
                    <div className="space-y-2">
                       <Toggle label="Tuman chegarasi (GeoJSON)" checked={layers.district} onChange={(v) => setLayers({...layers, district: v})} color="bg-indigo-600" />
                       <div className="flex items-center justify-between">
-                         <Toggle label="Mahallalar chegarasi" checked={layers.neighborhoods} onChange={(v) => setLayers({...layers, neighborhoods: v})} color="bg-indigo-600" />
+                         <Toggle label={`Mahallalar chegarasi (${neighborhoodsData?.features?.length || 49} ta MFY)`} checked={layers.neighborhoods} onChange={(v) => { setLayers({...layers, neighborhoods: v}); if (!v) setSelectedMahalla(null); }} color="bg-indigo-600" />
                          {isLoadingNeighborhoods && <span className="text-[10px] text-indigo-500 font-bold ml-2 animate-pulse">Yuklanmoqda...</span>}
                       </div>
                       <div className="flex items-center justify-between">
@@ -4211,25 +4255,68 @@ export default function MapComponent() {
         {layers.district && districtBoundary && (
           <GeoJSON 
             data={districtBoundary} 
-            style={{ color: '#1e40af', weight: 3, fillColor: '#1e40af', fillOpacity: 0.05 }} 
-          />
-        )}
-        {mahallaBoundary && (
-          <GeoJSON 
-            key={JSON.stringify(mahallaBoundary)} // force remount when geometry changes
-            data={mahallaBoundary} 
-            style={{ color: '#ef4444', weight: 2, dashArray: '5, 5', fillColor: '#ef4444', fillOpacity: 0.1 }} 
+            interactive={false}
+            style={{ color: '#1e40af', weight: 3, fillColor: '#1e40af', fillOpacity: 0.03 }} 
           />
         )}
         {layers.neighborhoods && neighborhoodsData && (
           <GeoJSON 
-            data={neighborhoodsData} 
-            style={{ color: '#6366f1', weight: 2, dashArray: '4, 4', fillOpacity: 0 }}
-            onEachFeature={(feature, layer) => {
-               if (feature.properties?.name) {
-                  layer.bindTooltip(feature.properties.name, { permanent: false, direction: 'center', className: 'text-[10px] font-bold bg-white/90 border-0 rounded shadow-sm px-1.5 py-0.5' });
-               }
+            key={`mahallas-${selectedMahalla?.properties.id ?? 'none'}-${isPickingLocation || isPickingRoutePoint || isRadiusMode ? 'pick' : 'view'}`}
+            data={neighborhoodsData as any}
+            interactive={!isPickingLocation && !isPickingRoutePoint && !isRadiusMode}
+            style={(feature: any) => {
+              const id = feature?.properties?.id ?? 0;
+              const isSelected = selectedMahalla?.properties.id === id;
+              const color = getMahallaColor(id);
+              return {
+                color: isSelected ? '#4338ca' : color,
+                weight: isSelected ? 3.2 : 1.5,
+                dashArray: isSelected ? undefined : '5, 4',
+                fillColor: color,
+                fillOpacity: isSelected ? 0.24 : 0.08,
+                opacity: isSelected ? 0.95 : 0.72,
+              };
             }}
+            onEachFeature={(feature: any, layer: any) => {
+              const props = feature?.properties;
+              if (!props?.name_uz) return;
+              const areaText = props.total_area_hectares ? `${Math.round(props.total_area_hectares).toLocaleString('uz-UZ')} ga` : '';
+              layer.bindTooltip(
+                `<div style="font-weight:800;font-size:11px;color:#0f172a;line-height:1.2">${props.name_uz} MFY</div>${areaText ? `<div style="font-size:10px;color:#475569;margin-top:1px">${areaText}</div>` : ''}`,
+                {
+                  sticky: true,
+                  direction: 'top',
+                  opacity: 0.96,
+                  className: 'rounded-lg border border-slate-200 bg-white/95 shadow-md px-2 py-1'
+                }
+              );
+              layer.on({
+                mouseover: (e: any) => {
+                  const target = e.target;
+                  if (selectedMahalla?.properties.id !== props.id) {
+                    target.setStyle({ weight: 2.5, fillOpacity: 0.18, opacity: 0.95 });
+                  }
+                },
+                mouseout: (e: any) => {
+                  const target = e.target;
+                  if (selectedMahalla?.properties.id !== props.id) {
+                    target.setStyle({ weight: 1.5, fillOpacity: 0.08, opacity: 0.72 });
+                  }
+                },
+                click: (e: any) => {
+                  if (isPickingLocation || isPickingRoutePoint || isRadiusMode) return;
+                  L.DomEvent.stopPropagation(e);
+                  selectMahallaFeature(feature as MahallaFeature, false);
+                },
+              });
+            }}
+          />
+        )}
+        {mahallaBoundary && !selectedMahalla && (
+          <GeoJSON 
+            key={JSON.stringify(mahallaBoundary)}
+            data={mahallaBoundary} 
+            style={{ color: '#ef4444', weight: 2.5, dashArray: '5, 5', fillColor: '#ef4444', fillOpacity: 0.12 }} 
           />
         )}
         {layers.highways && highwaysData && (
@@ -4247,8 +4334,107 @@ export default function MapComponent() {
         <LocationPicker />
       </MapContainer>
       
+      {/* Selected Mahalla Floating Inspector Card */}
+      {selectedMahalla && (() => {
+        const insideLocs = getLocationsInsideMahalla(selectedMahalla, locations);
+        const insideSchools = insideLocs.filter((l) => l.type === 'maktab');
+        const insideDmtts = insideLocs.filter((l) => l.type === 'dmtt' || l.type === 'bogcha');
+        const insideOthers = insideLocs.filter((l) => l.type !== 'maktab' && l.type !== 'dmtt' && l.type !== 'bogcha');
+        return (
+          <div className="print:hidden absolute bottom-[148px] md:bottom-20 left-4 md:left-6 z-[410] w-[calc(100vw-32px)] max-w-[330px] bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-indigo-100 p-3.5 animate-in fade-in slide-in-from-bottom-2 duration-200">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: getMahallaColor(selectedMahalla.properties.id) }}
+                  />
+                  <h4 className="font-extrabold text-sm text-slate-900 truncate">
+                    {selectedMahalla.properties.name_uz} MFY
+                  </h4>
+                </div>
+                <p className="text-[11px] font-semibold text-slate-500 mt-0.5">
+                  Maydoni: {selectedMahalla.properties.total_area_hectares.toLocaleString('uz-UZ')} ga · Kod: {selectedMahalla.properties.code}
+                </p>
+              </div>
+              <button
+                onClick={() => { setSelectedMahalla(null); setMahallaBoundary(null); }}
+                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center shrink-0 cursor-pointer"
+                title="Yopish"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-1.5 mt-2.5">
+              <div className="bg-sky-50 border border-sky-100 rounded-xl px-2 py-1.5 text-center">
+                <div className="text-sm font-extrabold text-sky-700">{insideSchools.length}</div>
+                <div className="text-[10px] font-bold text-sky-600">Maktab</div>
+              </div>
+              <div className="bg-rose-50 border border-rose-100 rounded-xl px-2 py-1.5 text-center">
+                <div className="text-sm font-extrabold text-rose-700">{insideDmtts.length}</div>
+                <div className="text-[10px] font-bold text-rose-600">Bog&apos;cha</div>
+              </div>
+              <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-2 py-1.5 text-center">
+                <div className="text-sm font-extrabold text-emerald-700">{insideOthers.length}</div>
+                <div className="text-[10px] font-bold text-emerald-600">Boshqa</div>
+              </div>
+            </div>
+
+            {insideLocs.length > 0 ? (
+              <>
+                <div className="mt-2.5 max-h-28 overflow-y-auto flex flex-wrap gap-1.5">
+                  {insideLocs.map((loc) => (
+                    <button
+                      key={loc.id}
+                      onClick={() => {
+                        if (mapRef.current) {
+                          mapRef.current.flyTo([loc.lat, loc.lng], 16, { duration: 0.9 });
+                        }
+                        if (!selectedLocations.some((s) => s.id === loc.id)) {
+                          setSelectedLocations((prev) => [...prev, loc]);
+                          showToast(`${loc.name} marshrutga qo'shildi`, 'success');
+                        }
+                      }}
+                      className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+                        loc.type === 'maktab'
+                          ? 'bg-sky-50 border-sky-200 text-sky-800 hover:bg-sky-100'
+                          : loc.type === 'dmtt' || loc.type === 'bogcha'
+                            ? 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
+                            : 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
+                      }`}
+                    >
+                      {loc.name}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => {
+                    const existingIds = new Set(selectedLocations.map((s) => s.id));
+                    const toAdd = insideLocs.filter((l) => !existingIds.has(l.id));
+                    if (toAdd.length > 0) {
+                      setSelectedLocations((prev) => [...prev, ...toAdd]);
+                      showToast(`${selectedMahalla.properties.name_uz} MFY dagi ${toAdd.length} ta muassasa marshrutga qo'shildi`, 'success');
+                    } else {
+                      showToast("Bu mahalladagi barcha muassasalar allaqachon tanlangan", 'info');
+                    }
+                  }}
+                  className="mt-2.5 w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold transition-colors cursor-pointer"
+                >
+                  Barchasini marshrutga qo&apos;shish ({insideLocs.length} ta)
+                </button>
+              </>
+            ) : (
+              <p className="mt-2 text-[11px] text-slate-400 font-medium">
+                Bu mahalla hududi ichida belgilangan muassasa topilmadi.
+              </p>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Floating Map Control Dock (Bottom-Left) */}
-      <div className="print:hidden absolute bottom-[88px] md:bottom-6 left-4 md:left-6 z-[400] flex flex-col md:flex-row space-y-2.5 md:space-y-0 md:space-x-3 pointer-events-auto items-start md:items-center">
+      <div className="print:hidden absolute bottom-[88px] md:bottom-6 left-4 md:left-6 z-[400] flex flex-col md:flex-row space-y-2.5 md:space-y-0 md:space-x-2.5 pointer-events-auto items-start md:items-center">
          {/* Settings Button */}
          <button 
            onClick={() => setIsSettingsOpen(true)} 
@@ -4257,6 +4443,28 @@ export default function MapComponent() {
          >
            <Settings2 className="w-5 h-5 md:w-5 md:h-5 text-indigo-600 shrink-0" />
            <span className="font-extrabold text-xs md:text-sm tracking-tight text-slate-700 hidden md:inline">Filtrlar</span>
+         </button>
+
+         {/* Quick 1-Tap Mahallalar (49) Layer Toggle */}
+         <button
+           onClick={() => {
+             setLayers((prev) => {
+               const next = !prev.neighborhoods;
+               if (!next) setSelectedMahalla(null);
+               return { ...prev, neighborhoods: next };
+             });
+           }}
+           className={`backdrop-blur-md w-11 h-11 md:w-auto md:px-4 md:py-3 rounded-full md:rounded-3xl shadow-xl md:shadow-2xl border flex items-center justify-center md:space-x-2 transition-all hover:scale-105 active:scale-95 shrink-0 cursor-pointer ${
+             layers.neighborhoods
+               ? 'bg-indigo-600 border-indigo-500 text-white'
+               : 'bg-white/95 border-slate-100 text-slate-700'
+           }`}
+           title="Bulung'ur mahallalari (49 ta MFY)"
+         >
+           <Layers className={`w-5 h-5 shrink-0 ${layers.neighborhoods ? 'text-white' : 'text-indigo-600'}`} />
+           <span className="font-extrabold text-xs md:text-sm tracking-tight hidden md:inline">
+             Mahallalar ({neighborhoodsData?.features?.length || 49})
+           </span>
          </button>
 
          {/* GPS Location Button (mobile fallback) */}
